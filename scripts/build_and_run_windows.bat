@@ -10,6 +10,12 @@ if "%1"=="" (
     exit /b 1
 )
 
+:: Check if build directory exists, create if not
+if not exist %BUILD_DIR% (
+    echo Build directory not found. Creating build directory...
+    mkdir %BUILD_DIR%
+)
+
 echo Configuring project with CMake...
 cmake -S %SERVER_DIR% -B %BUILD_DIR% -G "MinGW Makefiles"
 
