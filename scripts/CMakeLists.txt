@@ -9,7 +9,7 @@ set(SRC_DIR "${SERVER_DIR}/Src")
 set(INC_DIR "${SERVER_DIR}/Inc")
 set(TEST_DIR "${CMAKE_SOURCE_DIR}/../tests")
 
-set(BOOST_PATH "C:/Users/user/Documents/C++/boost_1_87_0")
+set(BOOST_PATH "C:/Users/user/Documents/C++/boost_1_87_0") #change it to your own folder
 
 # Boost Configuration
 set(BOOST_ROOT "${BOOST_PATH}")
@@ -39,7 +39,7 @@ target_link_libraries(server_test booking_system_lib)
 enable_testing()
 add_test(NAME TestServer COMMAND server_test)
 
-# Clang-format Custom Target (Including Test Folder)
+# Clang-format Custom Target (Including Test Folder) , (need install Clang in your device to use it)
 find_program(CLANG_FORMAT NAMES clang-format)
 
 if (CLANG_FORMAT)
