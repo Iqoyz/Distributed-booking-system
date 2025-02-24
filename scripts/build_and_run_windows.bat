@@ -1,46 +1,56 @@
 @echo off
 set SERVER_DIR=..\server
-set BUILD_DIR=%SERVER_DIR%\build
+set BUILD_DIR=.\build
 set SERVER_EXE=booking_system_server.exe
 set TEST_EXE=server_test.exe
 
+:: Ensure build directory exists
+if not exist "%BUILD_DIR%" (
+    echo Creating build directory...
+    mkdir "%BUILD_DIR%"
+)
+
 :: Check if an argument was provided
 if "%1"=="" (
-    echo Usage: build_and_run.bat [server|test]
+    echo Usage: build_and_run_windows.bat [server|test]
     exit /b 1
 )
 
-:: Check if build directory exists, create if not
-if not exist %BUILD_DIR% (
-    echo Build directory not found. Creating build directory...
-    mkdir %BUILD_DIR%
+echo Configuring project with CMake...
+cmake -S . -B "%BUILD_DIR%" -G "MinGW Makefiles"
+if %errorlevel% neq 0 (
+    echo [ERROR] CMake configuration failed!
+    exit /b 1
 )
 
-echo Configuring project with CMake...
-cmake -S %SERVER_DIR% -B %BUILD_DIR% -G "MinGW Makefiles"
-
 echo Building project...
-cmake --build %BUILD_DIR%
+cmake --build "%BUILD_DIR%"
+if %errorlevel% neq 0 (
+    echo [ERROR] Build failed! Skipping executable run.
+    exit /b 1
+)
 
 :: Run based on user input
 if /I "%1"=="server" (
     echo Running server executable...
-    if exist %BUILD_DIR%\%SERVER_EXE% (
-        cd %BUILD_DIR%
+    if exist "%BUILD_DIR%\%SERVER_EXE%" (
+        pushd "%BUILD_DIR%"
         .\%SERVER_EXE%
+        popd
     ) else (
-        echo Server executable not found!
+        echo [ERROR] Server executable not found!
     )
 ) else if /I "%1"=="test" (
     echo Running test executable...
-    if exist %BUILD_DIR%\%TEST_EXE% (
-        cd %BUILD_DIR%
+    if exist "%BUILD_DIR%\%TEST_EXE%" (
+        pushd "%BUILD_DIR%"
         .\%TEST_EXE%
+        popd
     ) else (
-        echo Test executable not found!
+        echo [ERROR] Test executable not found!
     )
 ) else (
-    echo Invalid option! Use 'server' or 'test'.
+    echo [ERROR] Invalid option! Use 'server' or 'test'.
 )
 
-cd %SERVER_DIR%
+exit /b 0
