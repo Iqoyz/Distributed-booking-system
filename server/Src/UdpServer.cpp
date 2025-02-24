@@ -24,7 +24,7 @@ void UDPServer::start() { io_context_.run(); }
 
 void UDPServer::stop() {
     socket_.close();
-    cout << "Server stopped." << endl;
+    cout << "[Server] Server stopped." << endl;
 }
 
 void UDPServer::do_receive() {
@@ -234,13 +234,28 @@ void UDPServer::notifyMonitorClients(const std::string &facility, uint16_t chang
     if (it != monitoringClients.end()) {
         for (const auto &monitor : it->second) {
             // Notify only if the change affects the monitored timeslot
-            if ((changedStartTime < monitor.endTime && changedEndTime > monitor.startTime)) {
-                response.message = "Update: Availability changed for " + facility + " from " +
+            if (changedStartTime < monitor.endTime && changedEndTime > monitor.startTime) {
+                // Create a TimeSlot object to check availability
+                Facility::TimeSlot slot(monitor.day, changedStartTime, changedEndTime);
+
+                // Find the corresponding facility
+                auto facilityIt = facilities.find(facility);
+                if (facilityIt == facilities.end()) {
+                    continue;  // Skip if the facility doesn't exist
+                }
+
+                // Check availability
+                bool isAvailable = facilityIt->second.isAvailable(slot);
+                std::string availabilityStatus = isAvailable ? "available" : "not available";
+
+                // Prepare the notification message
+                response.message = "Update: Availability for " + facility + " from " +
                                    std::to_string(changedStartTime) + " to " +
-                                   std::to_string(changedEndTime);
+                                   std::to_string(changedEndTime) + " changed to " +
+                                   availabilityStatus + ".";
                 response.status = 0;
 
-                // Send Response to monitoring client
+                // Send the response to the monitoring client
                 auto responseData = response.marshal();
                 do_send(std::string(responseData.begin(), responseData.end()),
                         monitor.clientEndpoint);

@@ -21,10 +21,8 @@ void clientAMonitor(io_context &io_context,
 void clientBMonitor(io_context &io_context,
                     const udp::endpoint &server_endpoint);
 
-int main()
-{
-  try
-  {
+int main() {
+  try {
     io_context io_context;
     unordered_map<string, Facility> facilities;
 
@@ -34,8 +32,7 @@ int main()
     UDPServer server(io_context, 9000, facilities);
 
     // Run server in a separate thread
-    thread serverThread([&io_context]()
-                        { io_context.run(); });
+    thread serverThread([&io_context]() { io_context.run(); });
     cout << "[TEST] UDP Server is running...\n";
 
     // Mock client setup
@@ -58,9 +55,7 @@ int main()
     serverThread.join();
 
     cout << "[TEST] All tests completed successfully.\n";
-  }
-  catch (const exception &e)
-  {
+  } catch (const exception &e) {
     cerr << "[ERROR] Exception: " << e.what() << endl;
   }
 
@@ -68,8 +63,7 @@ int main()
 }
 
 // Function to initialize multiple facilities
-void initFacility(unordered_map<string, Facility> &facilities)
-{
+void initFacility(unordered_map<string, Facility> &facilities) {
   facilities.emplace("Gym", Facility("Gym"));
   facilities.at("Gym").addAvailability(
       Facility::TimeSlot(Util::Day::Monday, 1000, 1100));
@@ -108,8 +102,7 @@ void initFacility(unordered_map<string, Facility> &facilities)
 // -----------------------------
 // MONITORING TEST
 // -----------------------------
-void monitorTest(io_context &io_context, const udp::endpoint &server_endpoint)
-{
+void monitorTest(io_context &io_context, const udp::endpoint &server_endpoint) {
   cout << "[MONITER TEST]\n";
   // Launch separate threads for each client
   thread clientAThread(clientAMonitor, ref(io_context), ref(server_endpoint));
@@ -122,8 +115,7 @@ void monitorTest(io_context &io_context, const udp::endpoint &server_endpoint)
 
 // Client A: Monitor Gym from 10:00 to 12:00
 void clientAMonitor(io_context &io_context,
-                    const udp::endpoint &server_endpoint)
-{
+                    const udp::endpoint &server_endpoint) {
   udp::socket socket(io_context, udp::endpoint(udp::v4(), 0));
   vector<uint8_t> responseData;
   ResponseMessage response;
@@ -165,16 +157,15 @@ void clientAMonitor(io_context &io_context,
     bool notificationReceived = false;
 
     // Start asynchronous wait for the timer
-    timer.async_wait([&](const boost::system::error_code &ec)
-                     {
+    timer.async_wait([&](const boost::system::error_code &ec) {
       if (!ec) {
         cout << "[Client A] Timeout reached without notifications. Ending "
                 "thread.\n";
         socket.cancel(); // Cancel the socket to break the blocking call
-      } });
+      }
+    });
 
-    try
-    {
+    try {
       // Blocking receive with timer running
       len = socket.receive_from(buffer(recv_buffer), sender_endpoint);
       timer.cancel(); // Cancel the timer if message received in time
@@ -183,9 +174,7 @@ void clientAMonitor(io_context &io_context,
       response = ResponseMessage::unmarshal(responseData);
       cout << "[Client A] Notification received: " << response.message << endl;
       notificationReceived = true;
-    }
-    catch (const boost::system::system_error &e)
-    {
+    } catch (const boost::system::system_error &e) {
       cout << "[Client A] Receive operation was canceled due to timeout.\n";
       break; // Exit the loop on timeout
     }
@@ -196,8 +185,7 @@ void clientAMonitor(io_context &io_context,
 
 // Client B: Book Gym from 10:00 to 11:00, Cancel Booking, and Book Again
 void clientBMonitor(io_context &io_context,
-                    const udp::endpoint &server_endpoint)
-{
+                    const udp::endpoint &server_endpoint) {
   std::this_thread::sleep_for(std::chrono::seconds(2)); // Simulate delay
   udp::socket socket(io_context, udp::endpoint(udp::v4(), 0));
 
@@ -233,13 +221,10 @@ void clientBMonitor(io_context &io_context,
   regex bookingIdPattern(R"(Booking ID:\s*(\d+))");
 
   if (regex_search(bookResponse.message, match, bookingIdPattern) &&
-      match.size() > 1)
-  {
+      match.size() > 1) {
     bookingId = stoi(match[1]);
     cout << "[Client B] Extracted Booking ID: " << bookingId << endl;
-  }
-  else
-  {
+  } else {
     cerr << "[Client B] Failed to extract booking ID from response.\n";
     return;
   }
@@ -295,13 +280,10 @@ void clientBMonitor(io_context &io_context,
   // Extract new Booking ID
   uint32_t newBookingId = 0;
   if (regex_search(bookAgainResponse.message, match, bookingIdPattern) &&
-      match.size() > 1)
-  {
+      match.size() > 1) {
     newBookingId = stoi(match[1]);
     cout << "[Client B] Extracted New Booking ID: " << newBookingId << endl;
-  }
-  else
-  {
+  } else {
     cerr << "[Client B] Failed to extract new booking ID from response.\n";
     return;
   }
@@ -312,8 +294,7 @@ void clientBMonitor(io_context &io_context,
 // -----------------------------
 // QUERY TEST
 // -----------------------------
-void queryTest(io_context &io_context, const udp::endpoint &server_endpoint)
-{
+void queryTest(io_context &io_context, const udp::endpoint &server_endpoint) {
   udp::socket socket(io_context, udp::endpoint(udp::v4(), 0));
   array<uint8_t, 1024> recv_buffer{};
   udp::endpoint sender_endpoint;
