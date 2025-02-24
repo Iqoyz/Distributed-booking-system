@@ -25,10 +25,11 @@
      ```
      cd scripts
      ```
-   - Run the build script:
+   - Run the build script for windows:
      ```
-     build_and_run_windows.bat test //for running test script
-     build_and_run_windows.bat test //for running the server
+     # run either command
+     build_and_run_windows.bat test #for running test script
+     build_and_run_windows.bat test #for running the server
      ```
 
 ## Troubleshooting
