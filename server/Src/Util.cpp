@@ -35,3 +35,13 @@ Util::Day Util::stringToDay(const std::string& dayStr) {
     }
     throw std::invalid_argument("Invalid day: " + dayStr);
 }
+
+std::pair<int, int> Util::parseTime(uint16_t time) {
+    int hour = time / 100;    // First two digits represent hours
+    int minute = time % 100;  // Last two digits represent minutes
+
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+        throw std::invalid_argument("Invalid time format: " + std::to_string(time));
+    }
+    return {hour, minute};
+}
