@@ -193,8 +193,7 @@ string UDPServer::registerMonitorClient(const std::string &facility, const Util:
         std::make_shared<boost::asio::steady_timer>(io_context_, std::chrono::seconds(interval))};
 
     // Store monitor info in the map
-    monitoringClients[facility].push_back(monitorInfo);
-
+    monitoringClients[facility][day].emplace(startTime, monitorInfo);
     // Timer to auto-expire after the interval ends
     monitorInfo.timer->async_wait(
         [this, facility, &monitorInfo, clientEndpoint](const boost::system::error_code &ec) {
@@ -212,39 +211,34 @@ string UDPServer::registerMonitorClient(const std::string &facility, const Util:
 
 void UDPServer::removeMonitorClient(const std::string &facility,
                                     const udp::endpoint &clientEndpoint) {
-    auto it = monitoringClients.find(facility);
-    if (it != monitoringClients.end()) {
-        auto &clients = it->second;
-        clients.erase(std::remove_if(clients.begin(), clients.end(),
-                                     [&](const MonitorInfo &info) {
-                                         return info.clientEndpoint == clientEndpoint;
-                                     }),
-                      clients.end());
+    auto facilityIt = monitoringClients.find(facility);
+    if (facilityIt == monitoringClients.end()) return;
 
-        if (clients.empty()) {
-            monitoringClients.erase(it);
+    for (auto &[day, monitorMap] : facilityIt->second) {
+        for (auto it = monitorMap.begin(); it != monitorMap.end();) {
+            if (it->second.clientEndpoint == clientEndpoint) {
+                it = monitorMap.erase(it);
+            } else {
+                ++it;
+            }
         }
     }
 }
 
 void UDPServer::notifyMonitorClients(const std::string &facility, uint16_t changedStartTime,
                                      uint16_t changedEndTime) {
-    auto it = monitoringClients.find(facility);
+    auto facilityIt = monitoringClients.find(facility);
+    if (facilityIt == monitoringClients.end()) return;
     ResponseMessage response;
-    if (it != monitoringClients.end()) {
-        for (const auto &monitor : it->second) {
-            // Notify only if the change affects the monitored timeslot
-            if (changedStartTime < monitor.endTime && changedEndTime > monitor.startTime) {
-                // Create a TimeSlot object to check availability
-                Facility::TimeSlot slot(monitor.day, changedStartTime, changedEndTime);
 
-                // Find the corresponding facility
-                auto facilityIt = facilities.find(facility);
-                if (facilityIt == facilities.end()) {
-                    continue;  // Skip if the facility doesn't exist
-                }
-
+    for (auto &[day, monitorMap] : facilityIt->second) {
+        for (auto it = monitorMap.lower_bound(changedStartTime);
+             it != monitorMap.end() && it->first < changedEndTime; it++) {
+            const MonitorInfo &info = it->second;
+            if (info.endTime > changedStartTime) {
                 // Check availability
+                auto facilityIt = facilities.find(facility);
+                Facility::TimeSlot slot(day, changedStartTime, changedEndTime);
                 bool isAvailable = facilityIt->second.isAvailable(slot);
                 std::string availabilityStatus = isAvailable ? "available" : "not available";
 
@@ -257,8 +251,7 @@ void UDPServer::notifyMonitorClients(const std::string &facility, uint16_t chang
 
                 // Send the response to the monitoring client
                 auto responseData = response.marshal();
-                do_send(std::string(responseData.begin(), responseData.end()),
-                        monitor.clientEndpoint);
+                do_send(std::string(responseData.begin(), responseData.end()), info.clientEndpoint);
             }
         }
     }

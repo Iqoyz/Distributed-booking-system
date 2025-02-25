@@ -6,6 +6,7 @@
 #include <iostream>
 #include <string>
 #include <unordered_map>
+#include <map>
 #include "Facility.h"
 
 using namespace boost::asio;
@@ -40,7 +41,12 @@ class UDPServer {
 
     // Facility and client management
     unordered_map<string, Facility> facilities;
-    unordered_map<std::string, std::vector<MonitorInfo>> monitoringClients;
+
+    // for monitoring clients
+    using TimeRangeMap = multimap<uint16_t, MonitorInfo>;  // map startTime
+    using DayMap = unordered_map<Util::Day, TimeRangeMap>;
+    using FacilityMonitorMap = unordered_map<string, DayMap>;
+    FacilityMonitorMap monitoringClients;
 
     void do_receive();  // Async receive function
     void handle_receive(const boost::system::error_code &error,
