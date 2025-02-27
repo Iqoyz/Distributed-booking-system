@@ -57,6 +57,7 @@ void UDPServer::handle_receive(const boost::system::error_code &error, size_t by
     // **At-Most-Once Handling**: Ignore duplicate requests
     if (!atLeastOnce_ && processedRequests.find(requestKey) != processedRequests.end()) {
         response.message = "Ignoring duplicate request: " + requestKey;
+        response.status = 1;
     } else {
         if (!atLeastOnce_) processedRequests.insert(requestKey);  // Insert only if unique
 
