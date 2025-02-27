@@ -9,6 +9,7 @@
 #include <winsock2.h>
 #include "Util.h"
 #include <optional>
+#include <boost/asio.hpp>
 
 enum class Operation : uint8_t {
     QUERY = 1,
@@ -32,12 +33,19 @@ monitor interval)]
 
 struct RequestMessage {
     uint32_t requestId;
+    boost::asio::ip::udp::endpoint clientEndpoint;  // for client uniqueness
     Operation operation;
     std::string facilityName;
     Util::Day day;
     uint16_t startTime;
     uint16_t endTime;
     std::optional<uint32_t> extraMessage;  // Optional Booking ID
+
+    // Generate a unique key combining request ID and client address
+    std::string getUniqueRequestKey() const {
+        return std::to_string(requestId) + "-" + clientEndpoint.address().to_string() + ":" +
+               std::to_string(clientEndpoint.port());
+    }
 
     // Marshal: Convert RequestMessage to byte array
     std::vector<uint8_t> marshal() const {

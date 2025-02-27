@@ -45,3 +45,10 @@ std::pair<int, int> Util::parseTime(uint16_t time) {
     }
     return {hour, minute};
 }
+
+float Util::generateFpRandNumber() {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<double> dist(0.0, 1.0);  // between 0 and 1.0
+    return dist(gen);
+}

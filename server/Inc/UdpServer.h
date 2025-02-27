@@ -6,6 +6,7 @@
 #include <iostream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <map>
 #include "Facility.h"
 
@@ -16,7 +17,7 @@ using namespace std;
 class UDPServer {
   public:
     UDPServer(io_context &io_context, short portNumber,
-              std::unordered_map<std::string, Facility> facilities);
+              std::unordered_map<std::string, Facility> facilities, bool atLeastOnce);
     ~UDPServer();
 
     void start();  // Start the server
@@ -38,9 +39,16 @@ class UDPServer {
     udp::socket socket_;
     udp::endpoint remote_endpoint_;
     array<char, 1024> recv_buffer_;
+    bool atLeastOnce_;  // True for At-Least-Once, False for At-Most-Once
+
+    const float SEND_SUCCESS_RATE =
+        0;  // 100% success rate for send message (the smaller , the higher rate)
 
     // Facility and client management
     unordered_map<string, Facility> facilities;
+
+    // Store processed request keys
+    unordered_set<string> processedRequests;
 
     // for monitoring clients
     using TimeRangeMap = multimap<uint16_t, MonitorInfo>;  // map startTime

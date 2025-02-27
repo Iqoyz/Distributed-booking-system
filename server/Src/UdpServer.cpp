@@ -9,12 +9,14 @@ using namespace std;
 using namespace boost::asio;
 
 UDPServer::UDPServer(io_context &io_context, short portNumber,
-                     std::unordered_map<std::string, Facility> facilities)
+                     std::unordered_map<std::string, Facility> facilities, bool atLeastOnce)
     : io_context_(io_context),
       port_(portNumber),
       facilities(std::move(facilities)),  // Move the facilities into the member variable
-      socket_(io_context, udp::endpoint(udp::v4(), portNumber)) {
-    cout << "[Server] Server started on port " << portNumber << endl;
+      socket_(io_context, udp::endpoint(udp::v4(), portNumber)),
+      atLeastOnce_(atLeastOnce) {
+    cout << "[Server] Server started on port " << portNumber << " with "
+         << (atLeastOnce ? "At-Least-Once" : "At-Most-Once") << " mode." << endl;
     do_receive();
 }
 
@@ -39,87 +41,87 @@ void UDPServer::do_receive() {
 }
 
 void UDPServer::handle_receive(const boost::system::error_code &error, size_t bytes_transferred) {
-    if (!error) {
-        std::vector<uint8_t> requestData(recv_buffer_.begin(),
-                                         recv_buffer_.begin() + bytes_transferred);
-        RequestMessage request = RequestMessage::unmarshal(requestData);
+    if (error) return;  // Early return on error
 
-        std::cout << "[Server] Received Request ID: " << request.requestId
-                  << ", Operation: " << static_cast<int>(request.operation)
-                  << ", Facility: " << request.facilityName << std::endl;
+    std::vector<uint8_t> requestData(recv_buffer_.begin(),
+                                     recv_buffer_.begin() + bytes_transferred);
 
-        ResponseMessage response;
-        response.requestId = request.requestId;
+    RequestMessage request = RequestMessage::unmarshal(requestData);
 
-        // Process the request based on the operation
-        switch (request.operation) {
-            case Operation::QUERY:
-                response.status = 0;
-                try {
+    request.clientEndpoint = remote_endpoint_;
+    std::string requestKey = request.getUniqueRequestKey();
+
+    ResponseMessage response;
+    response.requestId = request.requestId;
+
+    // **At-Most-Once Handling**: Ignore duplicate requests
+    if (!atLeastOnce_ && processedRequests.find(requestKey) != processedRequests.end()) {
+        response.message = "Ignoring duplicate request: " + requestKey;
+    } else {
+        if (!atLeastOnce_) processedRequests.insert(requestKey);  // Insert only if unique
+
+        // Process the request
+        try {
+            switch (request.operation) {
+                case Operation::QUERY:
+                    response.status = 0;
                     response.message = queryAvailability(request.facilityName, request.day,
                                                          request.startTime, request.endTime);
-                } catch (const std::exception &e) {
-                    response.status = 1;
-                    response.message = e.what();
-                }
-                break;
-            case Operation::BOOK:
-                response.status = 0;
-                try {
+                    break;
+
+                case Operation::BOOK:
+                    response.status = 0;
                     response.message = bookFacility(request.facilityName, request.day,
                                                     request.startTime, request.endTime);
-                } catch (const std::exception &e) {
-                    response.status = 1;
-                    response.message = e.what();
-                }
-                break;
-            case Operation::CANCEL:
-                response.status = 0;
-                try {
-                    if (!request.extraMessage.has_value()) {
+                    break;
+
+                case Operation::CANCEL:
+                    if (!request.extraMessage.has_value())
                         throw std::runtime_error("Booking ID required for cancellation.");
-                    }
-                    uint32_t bookingId = request.extraMessage.value();
-                    response.message = cancelBookFacility(request.facilityName, bookingId);
-                } catch (const std::exception &e) {
-                    response.status = 1;
-                    response.message = e.what();
-                }
-                break;
-            case Operation::MONITOR:
-                response.status = 0;
-                try {
-                    if (!request.extraMessage.has_value()) {
+
+                    response.status = 0;
+                    response.message =
+                        cancelBookFacility(request.facilityName, request.extraMessage.value());
+                    break;
+
+                case Operation::MONITOR:
+                    if (!request.extraMessage.has_value())
                         throw std::runtime_error(
-                            "Monitor interval (extraMessage) is missing for monitor request.");
-                    }
+                            "Monitor interval is missing for monitor request.");
+
+                    response.status = 0;
                     response.message = registerMonitorClient(
                         request.facilityName, request.day, request.startTime, request.endTime,
                         request.extraMessage.value(), remote_endpoint_);
-                } catch (const std::exception &e) {
-                    response.status = 1;
-                    response.message = e.what();
-                }
-                break;
-            default:
-                response.status = 1;
-                response.message = "Invalid operation.";
-                break;
-        }
+                    break;
 
-        // Send Response
-        auto responseData = response.marshal();
-        do_send(std::string(responseData.begin(), responseData.end()), remote_endpoint_);
+                default:
+                    response.status = 1;
+                    response.message = "Invalid operation.";
+                    break;
+            }
+        } catch (const std::exception &e) {
+            response.status = 1;
+            response.message = e.what();
+        }
     }
+
+    // Send Response
+    auto responseData = response.marshal();
+    do_send(std::string(responseData.begin(), responseData.end()), remote_endpoint_);
 }
 
 void UDPServer::do_send(const string &message, const udp::endpoint &endpoint) {
-    socket_.async_send_to(buffer(message), endpoint,
-                          [this](boost::system::error_code ec, std::size_t /*bytes_sent*/) {
-                              if (ec) {
-                                  cerr << "Error sending response: " << ec.message() << endl;
-                              }
-                          });
+    if (Util::generateFpRandNumber() >= SEND_SUCCESS_RATE) {  // simulate the rate of loss
+        socket_.async_send_to(buffer(message), endpoint,
+                              [this](boost::system::error_code ec, std::size_t /*bytes_sent*/) {
+                                  if (ec) {
+                                      cerr << "Error sending response: " << ec.message() << endl;
+                                  }
+                              });
+    } else {
+        std::cout << "[Server] send failed. (simulated)" << std::endl;
+    }
 }
 
 string UDPServer::queryAvailability(const string &facility, const Util::Day &day,
