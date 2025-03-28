@@ -1,5 +1,5 @@
 #include "../server/Inc/Message.h"
-#include "../server/Inc/UDPServer.h"
+#include "../server/Inc/UdpServer.h"
 #include <boost/asio.hpp>
 #include <chrono>
 #include <iostream>

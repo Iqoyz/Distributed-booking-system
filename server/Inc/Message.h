@@ -6,7 +6,16 @@
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
+
+// Platform-specific headers
+#ifdef _WIN32
 #include <winsock2.h>
+#else
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#endif
+
 #include "Util.h"
 #include <optional>
 #include <boost/asio.hpp>
@@ -28,21 +37,21 @@ Query:
 Book:
 [RequestID][OpCode=2][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200]
 
-Modify:
+Change:
 [RequestID][OpCode=3][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200]
 [extraMessage=1000 and 30 (Booking ID=1000)(OffsetMinutes=30)]
 
-Cancel:
-[RequestID][OpCode=6][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200]
-[extraMessage=1000 (Booking ID=1000)]
+Monitor:
+[RequestID][OpCode=4][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1400]
+[extraMessage=300 (300s monitor interval)]
 
 Extend:
 [RequestID][OpCode=5][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200]
 [extraMessage=1000 and 30 (Booking ID=1000)(ExtendMinutes=30)]
 
-Monitor:
-[RequestID][OpCode=4][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1400]
-[extraMessage=300 (300s monitor interval)]
+Cancel:
+[RequestID][OpCode=6][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200]
+[extraMessage=1000 (Booking ID=1000)]
 */
 
 struct RequestMessage {
