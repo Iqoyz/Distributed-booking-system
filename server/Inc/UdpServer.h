@@ -11,6 +11,8 @@
 #include "Facility.h"
 #include <set>
 #include <tuple>
+#include <chrono>
+#include <queue>
 
 using namespace boost::asio;
 using boost::asio::ip::udp;
@@ -51,7 +53,9 @@ class UDPServer {
     Facility &getFacilityOrThrow(const string &facilityName);
 
     // Store processed request keys
-    unordered_set<string> processedRequests;
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> processedRequests;
+    const size_t MAX_PROCESSED_REQUESTS = 1000;
+    std::queue<std::string> requestOrder;  // Tracks insertion order
 
     // for monitoring clients
     using TimeRangeMap = multimap<uint16_t, MonitorInfo>;  // map startTime

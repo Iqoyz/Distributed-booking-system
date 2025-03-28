@@ -28,8 +28,9 @@ Book:
 [RequestID][OpCode=2][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200]
 Modify:
 [RequestID][OpCode=2][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200][extraMessage=100
-and 30 (Booking ID=1000)(OffsetMinutes=30)] Cancel:
-[RequestID][OpCode=2][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200][extraMessage=1000
+and 30 (Booking ID=1000)(OffsetMinutes=30)]
+Cancel:
+[RequestID][OpCode=6][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200][extraMessage=1000
 (Booking ID=1000)]
 Monitor:
 [RequestID][OpCode=4][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1400][extraMessage=300(300s

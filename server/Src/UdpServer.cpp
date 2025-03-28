@@ -53,13 +53,36 @@ void UDPServer::handle_receive(const boost::system::error_code &error, size_t by
     ResponseMessage response;
     response.requestId = request.requestId;
 
+    auto now = std::chrono::steady_clock::now();
+    auto it = processedRequests.find(requestKey);
+    // how long we want to retain old requests (e.g., 30s)for demo purposes
+    int expirySeconds = 30;
+
+    bool isDuplicate = false;
+
+    if (!atLeastOnce_ && it != processedRequests.end()) {
+        auto age = std::chrono::duration_cast<std::chrono::seconds>(now - it->second).count();
+        if (age <= expirySeconds) {
+            isDuplicate = true;
+        }
+    }
+
     // **At-Most-Once Handling**: Ignore duplicate requests
-    if (!atLeastOnce_ && processedRequests.find(requestKey) != processedRequests.end()) {
+    if (isDuplicate) {
         response.message = "Ignoring duplicate request: " + requestKey;
         response.status = 1;
     } else {
-        if (!atLeastOnce_) processedRequests.insert(requestKey);  // Mark as processed
-
+        if (!atLeastOnce_) {
+            // Clean up if over capacity
+            if (processedRequests.size() >= MAX_PROCESSED_REQUESTS) {
+                const std::string &oldest = requestOrder.front();
+                processedRequests.erase(oldest);
+                requestOrder.pop();
+            }
+            // Insert new request, (insert or update timestamp)
+            processedRequests[requestKey] = now;
+            requestOrder.push(requestKey);
+        }
         try {
             switch (request.operation) {
                 case Operation::QUERY:
