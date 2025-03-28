@@ -16,7 +16,7 @@ enum class Operation : uint8_t {
     BOOK = 2,
     CHANGE = 3,
     MONITOR = 4,
-    STATUS = 5,
+    EXTEND = 5,
     CANCEL = 6
 };
 
@@ -24,17 +24,25 @@ enum class Operation : uint8_t {
 Example of Requests:
 Query:
 [RequestID][OpCode=1][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200]
+
 Book:
 [RequestID][OpCode=2][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200]
+
 Modify:
-[RequestID][OpCode=2][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200][extraMessage=100
-and 30 (Booking ID=1000)(OffsetMinutes=30)]
+[RequestID][OpCode=3][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200]
+[extraMessage=1000 and 30 (Booking ID=1000)(OffsetMinutes=30)]
+
 Cancel:
-[RequestID][OpCode=6][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200][extraMessage=1000
-(Booking ID=1000)]
+[RequestID][OpCode=6][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200]
+[extraMessage=1000 (Booking ID=1000)]
+
+Extend:
+[RequestID][OpCode=5][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200]
+[extraMessage=1000 and 30 (Booking ID=1000)(ExtendMinutes=30)]
+
 Monitor:
-[RequestID][OpCode=4][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1400][extraMessage=300(300s
-monitor interval)]
+[RequestID][OpCode=4][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1400]
+[extraMessage=300 (300s monitor interval)]
 */
 
 struct RequestMessage {
@@ -92,6 +100,17 @@ struct RequestMessage {
                     uint32_t netId = htonl(bookingId.value());
                     buffer.insert(buffer.end(), reinterpret_cast<const uint8_t*>(&netId),
                                   reinterpret_cast<const uint8_t*>(&netId) + sizeof(netId));
+                }
+                break;
+
+            case Operation::EXTEND:
+                if (bookingId.has_value() && offsetMinutes.has_value()) {
+                    uint32_t netId = htonl(bookingId.value());
+                    int32_t netOffset = htonl(offsetMinutes.value());
+                    buffer.insert(buffer.end(), reinterpret_cast<const uint8_t*>(&netId),
+                                  reinterpret_cast<const uint8_t*>(&netId) + sizeof(netId));
+                    buffer.insert(buffer.end(), reinterpret_cast<const uint8_t*>(&netOffset),
+                                  reinterpret_cast<const uint8_t*>(&netOffset) + sizeof(netOffset));
                 }
                 break;
 
@@ -177,6 +196,20 @@ struct RequestMessage {
                 break;
 
             case Operation::CHANGE:
+                if (offset + sizeof(uint32_t) + sizeof(int32_t) <= buffer.size()) {
+                    uint32_t netBookingId;
+                    int32_t netOffset;
+                    std::memcpy(&netBookingId, buffer.data() + offset, sizeof(netBookingId));
+                    offset += sizeof(netBookingId);
+                    std::memcpy(&netOffset, buffer.data() + offset, sizeof(netOffset));
+                    offset += sizeof(netOffset);
+
+                    msg.bookingId = ntohl(netBookingId);
+                    msg.offsetMinutes = ntohl(netOffset);
+                }
+                break;
+
+            case Operation::EXTEND:
                 if (offset + sizeof(uint32_t) + sizeof(int32_t) <= buffer.size()) {
                     uint32_t netBookingId;
                     int32_t netOffset;

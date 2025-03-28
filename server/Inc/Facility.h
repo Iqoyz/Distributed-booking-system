@@ -46,6 +46,7 @@ class Facility {
     bool isAvailable(const TimeSlot &slot) const;
     bool bookSlot(const TimeSlot &slot, uint32_t &bookingId);
     bool modifyBooking(uint32_t bookingId, int offsetMinutes, std::string &errorMessage);
+    bool extendBooking(uint32_t bookingId, int extensionMinutes, std::string &errorMessage);
     std::optional<TimeSlot> cancelBooking(uint32_t bookingId);
     void displayAvailability(Util::Day day) const;
     void displayAllSlots(Util::Day day) const;

@@ -210,3 +210,47 @@ std::vector<Facility::TimeSlot> Facility::splitIntoThirtyMinSlots(
     }
     return result;
 }
+
+bool Facility::extendBooking(uint32_t bookingId, int extensionMinutes, std::string& errorMessage) {
+    auto it = bookings.find(bookingId);
+    if (it == bookings.end()) {
+        errorMessage = "Invalid Booking ID.";
+        return false;
+    }
+
+    BookingInfo& booking = it->second;
+    TimeSlot oldSlot = booking.slot;
+
+    int oldEndMins = Util::toMinutes(oldSlot.endTime);
+    int newEndMins = oldEndMins + extensionMinutes;
+    int newEnd = Util::toHHMM(newEndMins);
+
+    if (newEnd > 1800 || newEnd <= oldSlot.endTime) {
+        std::cerr << "[Server] Invalid extension range.\n";
+        errorMessage = "Extension goes beyond allowed time range or is non-positive.";
+        return false;
+    }
+
+    TimeSlot extendedSlot = oldSlot;
+    extendedSlot.endTime = newEnd;
+
+    // Check availability for the extension period
+    TimeSlot extensionOnlySlot(oldSlot.day, oldSlot.endTime, newEnd);
+    if (!isAvailable(extensionOnlySlot)) {
+        errorMessage = "Extension time slot is not available.";
+        return false;
+    }
+
+    // Reserve the extended portion by removing it from availability
+    auto extensionParts = splitIntoThirtyMinSlots(extensionOnlySlot);
+    for (const auto& part : extensionParts) {
+        availableSlots.erase(std::remove(availableSlots.begin(), availableSlots.end(), part),
+                             availableSlots.end());
+    }
+    sortAvailableSlots();
+
+    // Update the booking
+    booking.slot = extendedSlot;
+
+    return true;
+}

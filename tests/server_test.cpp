@@ -21,6 +21,7 @@ void clientAMonitor(io_context &io_context,
 void clientBMonitor(io_context &io_context,
                     const udp::endpoint &server_endpoint);
 void modifyTest(io_context &io_context, const udp::endpoint &server_endpoint);
+void extendTest(io_context &io_context, const udp::endpoint &server_endpoint);
 
 int main() {
   try {
@@ -54,6 +55,11 @@ int main() {
     modifyTest(io_context, server_endpoint);
 
     // -----------------------------
+    // EXTEND TEST
+    // -----------------------------
+    extendTest(io_context, server_endpoint);
+
+    // -----------------------------
     // MONITORING TEST
     // -----------------------------
     monitorTest(io_context, server_endpoint);
@@ -80,7 +86,11 @@ void initFacility(unordered_map<string, Facility> &facilities) {
   facilities.at("Gym").addAvailability(
       Facility::TimeSlot(Util::Day::Monday, 1100, 1130));
   facilities.at("Gym").addAvailability(
-      Facility::TimeSlot(Util::Day::Tuesday, 1130, 1200));
+      Facility::TimeSlot(Util::Day::Monday, 1130, 1200));
+  facilities.at("Gym").addAvailability(
+      Facility::TimeSlot(Util::Day::Monday, 1230, 1300));
+  facilities.at("Gym").addAvailability(
+      Facility::TimeSlot(Util::Day::Monday, 1330, 1400));
 
   facilities.emplace("Swimming Pool", Facility("Swimming Pool"));
   facilities.at("Swimming Pool")
@@ -116,10 +126,19 @@ void initFacility(unordered_map<string, Facility> &facilities) {
 
   facilities.emplace("Fitness Center", Facility("Fitness Center"));
   facilities.at("Fitness Center")
-      .addAvailability(Facility::TimeSlot(Util::Day::Monday, 600, 800));
+      .addAvailability(Facility::TimeSlot(Util::Day::Friday, 800, 830));
   facilities.at("Fitness Center")
-      .addAvailability(Facility::TimeSlot(Util::Day::Friday, 1800, 2000));
-
+      .addAvailability(Facility::TimeSlot(Util::Day::Friday, 830, 900));
+  facilities.at("Fitness Center")
+      .addAvailability(Facility::TimeSlot(Util::Day::Friday, 900, 930));
+  facilities.at("Fitness Center")
+      .addAvailability(Facility::TimeSlot(Util::Day::Friday, 930, 1000));
+  facilities.at("Fitness Center")
+      .addAvailability(Facility::TimeSlot(Util::Day::Friday, 1000, 1030));
+  facilities.at("Fitness Center")
+      .addAvailability(Facility::TimeSlot(Util::Day::Friday, 1030, 1100));
+  facilities.at("Fitness Center")
+      .addAvailability(Facility::TimeSlot(Util::Day::Friday, 1130, 1200));
   cout << "[INFO] Facilities initialized successfully.\n";
 }
 
@@ -195,6 +214,76 @@ void modifyTest(io_context &io_context, const udp::endpoint &server_endpoint) {
 }
 
 // -----------------------------
+// EXTEND TEST
+// -----------------------------
+void extendTest(io_context &io_context, const udp::endpoint &server_endpoint) {
+  cout << "\n[EXTEND TEST]\n";
+
+  udp::socket socket(io_context, udp::endpoint(udp::v4(), 0));
+  array<uint8_t, 1024> recv_buffer{};
+  udp::endpoint sender_endpoint;
+  vector<uint8_t> responseData;
+
+  // -----------------------------
+  // Step 1: Book a 30-min slot (08:00–08:30)
+  // -----------------------------
+  RequestMessage bookRequest;
+  bookRequest.requestId = 3001;
+  bookRequest.operation = Operation::BOOK;
+  bookRequest.facilityName = "Fitness Center";
+  bookRequest.day = Util::Day::Friday;
+  bookRequest.startTime = 900;
+  bookRequest.endTime = 930;
+
+  socket.send_to(buffer(bookRequest.marshal()), server_endpoint);
+
+  size_t len = socket.receive_from(buffer(recv_buffer), sender_endpoint);
+  responseData.assign(recv_buffer.begin(), recv_buffer.begin() + len);
+  ResponseMessage bookResponse = ResponseMessage::unmarshal(responseData);
+  cout << "[EXTEND TEST] Book Response: " << bookResponse.message << endl;
+
+  // Extract booking ID from bookResponse
+  uint32_t bookingId = 0;
+  smatch match;
+  regex bookingIdPattern(R"(Booking ID:\s*(\d+))");
+
+  if (regex_search(bookResponse.message, match, bookingIdPattern) &&
+      match.size() > 1) {
+    bookingId = stoi(match[1]);
+    cout << "[EXTEND TEST] Extracted Booking ID: " << bookingId << endl;
+  } else {
+    cerr << "[EXTEND TEST] Failed to extract booking ID.\n";
+    return;
+  }
+
+  // -----------------------------
+  // Step 2: Extend the booking by 30 minutes → (08:00–09:00)
+  // -----------------------------
+  std::this_thread::sleep_for(std::chrono::seconds(2)); // Optional delay
+
+  RequestMessage extendRequest;
+  extendRequest.requestId = 3002;
+  extendRequest.operation = Operation::EXTEND;
+  extendRequest.facilityName = "Fitness Center";
+  extendRequest.day = Util::Day::Friday;
+  extendRequest.startTime = 900;
+  extendRequest.endTime = 930;
+  extendRequest.bookingId = bookingId;
+  extendRequest.offsetMinutes = 60;
+
+  socket.send_to(buffer(extendRequest.marshal()), server_endpoint);
+
+  // Receive EXTEND response
+  recv_buffer.fill(0);
+  len = socket.receive_from(buffer(recv_buffer), sender_endpoint);
+  responseData.assign(recv_buffer.begin(), recv_buffer.begin() + len);
+  ResponseMessage extendResponse = ResponseMessage::unmarshal(responseData);
+  cout << "[EXTEND TEST] Extend Response: " << extendResponse.message << endl;
+
+  cout << "[EXTEND TEST] Extend test completed.\n\n";
+}
+
+// -----------------------------
 // MONITORING TEST
 // -----------------------------
 void monitorTest(io_context &io_context, const udp::endpoint &server_endpoint) {
@@ -225,7 +314,7 @@ void clientAMonitor(io_context &io_context,
   monitorRequest.day = Util::Day::Monday;
   monitorRequest.startTime = 1000;
   monitorRequest.endTime = 1200;
-  monitorRequest.monitorInterval = 15; // Monitor for 10 seconds
+  monitorRequest.monitorInterval = 20; // Monitor for 20 seconds
 
   socket.send_to(buffer(monitorRequest.marshal()), server_endpoint);
 
@@ -241,13 +330,13 @@ void clientAMonitor(io_context &io_context,
   cout << "[Client A] Waiting for booking/cancellation notifications (timeout: "
           "15s)...\n";
 
-  for (int i = 0; i < 10; ++i) // Simulate 3 notifications or timeout
+  for (int i = 0; i < 20; ++i) // Simulate 3 notifications or timeout
   {
     recv_buffer.fill(0);
 
     // Create a deadline timer for 15 seconds
     steady_timer timer(io_context);
-    timer.expires_after(std::chrono::seconds(15));
+    timer.expires_after(std::chrono::seconds(20));
 
     bool notificationReceived = false;
 
@@ -408,6 +497,32 @@ void clientBMonitor(io_context &io_context,
   responseData.assign(recv_buffer.begin(), recv_buffer.begin() + len);
   ResponseMessage modifyResponse = ResponseMessage::unmarshal(responseData);
   cout << "[Client B] Modify Response: " << modifyResponse.message << endl;
+
+  // -----------------------------
+  // Step 5: Extend Gym Booking from (10:30 to 11:30) to (10:30 to 12:00)
+  // -----------------------------
+  std::this_thread::sleep_for(std::chrono::seconds(2)); // Optional delay
+  cout << "\n[Client B] Sending EXTEND request to extend booking +30 "
+          "minutes...\n";
+
+  RequestMessage extendRequest;
+  extendRequest.requestId = 1006;
+  extendRequest.operation = Operation::EXTEND; // Make sure EXTEND is defined
+  extendRequest.facilityName = "Gym";
+  extendRequest.day = Util::Day::Monday;
+  extendRequest.startTime = 1030; // Optional - for logs
+  extendRequest.endTime = 1130;
+  extendRequest.bookingId = newBookingId;
+  extendRequest.offsetMinutes = 30; // Extend duration by +30 minutes
+
+  socket.send_to(buffer(extendRequest.marshal()), server_endpoint);
+
+  // Receive EXTEND response
+  recv_buffer.fill(0);
+  len = socket.receive_from(buffer(recv_buffer), sender_endpoint);
+  responseData.assign(recv_buffer.begin(), recv_buffer.begin() + len);
+  ResponseMessage extendResponse = ResponseMessage::unmarshal(responseData);
+  cout << "[Client B] Extend Response: " << extendResponse.message << endl;
 
   cout << "[Client B] Workflow completed successfully.\n";
 }

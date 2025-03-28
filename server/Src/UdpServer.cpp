@@ -107,6 +107,15 @@ void UDPServer::handle_receive(const boost::system::error_code &error, size_t by
                         modifyBookFacility(request.facilityName, request.bookingId.value(),
                                            request.offsetMinutes.value());
                     break;
+                case Operation::EXTEND:
+                    if (!request.bookingId.has_value() || !request.offsetMinutes.has_value()) {
+                        throw std::runtime_error("Booking ID and extension duration required.");
+                    }
+                    response.status = 0;
+                    response.message =
+                        extendBookFacility(request.facilityName, request.bookingId.value(),
+                                           request.offsetMinutes.value());
+                    break;
 
                 case Operation::CANCEL:
                     if (!request.bookingId.has_value()) {
@@ -234,6 +243,34 @@ std::string UDPServer::modifyBookFacility(std::string &facility, uint32_t bookin
     }
 
     return "Booking with ID " + std::to_string(bookingId) + " modified successfully to " +
+           newSlot.toString() + ".";
+}
+
+std::string UDPServer::extendBookFacility(std::string &facility, uint32_t bookingId,
+                                          int extensionMinutes) {
+    Facility &f = getFacilityOrThrow(facility);  // throws if not found
+
+    // Get original slot before extension
+    Facility::BookingInfo oldBooking = f.getBookingInfo(bookingId);
+    Facility::TimeSlot oldSlot = oldBooking.slot;
+
+    std::string errorMessage;
+    if (!f.extendBooking(bookingId, extensionMinutes, errorMessage)) {
+        throw std::runtime_error("Failed to extend booking: " + errorMessage);
+    }
+
+    // Get the updated slot after extension
+    Facility::BookingInfo newBooking = f.getBookingInfo(bookingId);
+    Facility::TimeSlot newSlot = newBooking.slot;
+
+    // Notify only for the newly added portion
+    if (newSlot.endTime > oldSlot.endTime) {
+        notifyMonitorClients(facility, oldSlot.endTime, newSlot.endTime);
+    } else if (newSlot.startTime < oldSlot.startTime) {
+        notifyMonitorClients(facility, newSlot.startTime, oldSlot.startTime);
+    }
+
+    return "Booking with ID " + std::to_string(bookingId) + " extended successfully to " +
            newSlot.toString() + ".";
 }
 

@@ -82,6 +82,8 @@ class UDPServer {
 
     string modifyBookFacility(string &facility, uint32_t bookingId, int offsetMinutes);
 
+    string extendBookFacility(std::string &facility, uint32_t bookingId, int extensionMinutes);
+
     string cancelBookFacility(const string &facility, uint32_t bookingId);
 
     string registerMonitorClient(const std::string &facility, const Util::Day &day,
