@@ -10,6 +10,8 @@ class Util {
     static Day stringToDay(const std::string &dayStr);
     static std::string dayToString(Day day);
     static std::pair<int, int> parseTime(uint16_t time);
+    static int toHHMM(int minutes);
+    static int toMinutes(int hhmm);
 
     static float generateFpRandNumber();
 };

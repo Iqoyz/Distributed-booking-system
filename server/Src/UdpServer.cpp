@@ -47,7 +47,6 @@ void UDPServer::handle_receive(const boost::system::error_code &error, size_t by
                                      recv_buffer_.begin() + bytes_transferred);
 
     RequestMessage request = RequestMessage::unmarshal(requestData);
-
     request.clientEndpoint = remote_endpoint_;
     std::string requestKey = request.getUniqueRequestKey();
 
@@ -59,9 +58,8 @@ void UDPServer::handle_receive(const boost::system::error_code &error, size_t by
         response.message = "Ignoring duplicate request: " + requestKey;
         response.status = 1;
     } else {
-        if (!atLeastOnce_) processedRequests.insert(requestKey);  // Insert only if unique
+        if (!atLeastOnce_) processedRequests.insert(requestKey);  // Mark as processed
 
-        // Process the request
         try {
             switch (request.operation) {
                 case Operation::QUERY:
@@ -76,24 +74,34 @@ void UDPServer::handle_receive(const boost::system::error_code &error, size_t by
                                                     request.startTime, request.endTime);
                     break;
 
-                case Operation::CANCEL:
-                    if (!request.extraMessage.has_value())
-                        throw std::runtime_error("Booking ID required for cancellation.");
-
+                case Operation::CHANGE:
+                    if (!request.bookingId.has_value() || !request.offsetMinutes.has_value()) {
+                        throw std::runtime_error(
+                            "Booking ID and offset are required for modification.");
+                    }
                     response.status = 0;
                     response.message =
-                        cancelBookFacility(request.facilityName, request.extraMessage.value());
+                        modifyBookFacility(request.facilityName, request.bookingId.value(),
+                                           request.offsetMinutes.value());
+                    break;
+
+                case Operation::CANCEL:
+                    if (!request.bookingId.has_value()) {
+                        throw std::runtime_error("Booking ID required for cancellation.");
+                    }
+                    response.status = 0;
+                    response.message =
+                        cancelBookFacility(request.facilityName, request.bookingId.value());
                     break;
 
                 case Operation::MONITOR:
-                    if (!request.extraMessage.has_value())
-                        throw std::runtime_error(
-                            "Monitor interval is missing for monitor request.");
-
+                    if (!request.monitorInterval.has_value()) {
+                        throw std::runtime_error("Monitor interval is required.");
+                    }
                     response.status = 0;
                     response.message = registerMonitorClient(
                         request.facilityName, request.day, request.startTime, request.endTime,
-                        request.extraMessage.value(), remote_endpoint_);
+                        request.monitorInterval.value(), remote_endpoint_);
                     break;
 
                 default:
@@ -107,7 +115,7 @@ void UDPServer::handle_receive(const boost::system::error_code &error, size_t by
         }
     }
 
-    // Send Response
+    // Send response
     auto responseData = response.marshal();
     do_send(std::string(responseData.begin(), responseData.end()), remote_endpoint_);
 }
@@ -125,31 +133,37 @@ void UDPServer::do_send(const string &message, const udp::endpoint &endpoint) {
     }
 }
 
-string UDPServer::queryAvailability(const string &facility, const Util::Day &day,
-                                    uint16_t startTime, uint16_t endTime) {
-    auto it = facilities.find(facility);
-    if (it == facilities.end()) {
-        throw std::runtime_error("Facility not found!");
-    }
-
-    Facility::TimeSlot slot(day, startTime, endTime);
-    it->second.displayAllSlots(day);
-    it->second.displayAvailability(day);
-    return it->second.isAvailable(slot) ? "Slot available: " + slot.toString()
-                                        : "Slot not available: " + slot.toString();
+void UDPServer::do_send_reliable(const std::string &message, const udp::endpoint &endpoint) {
+    socket_.async_send_to(buffer(message), endpoint,
+                          [this](boost::system::error_code ec, std::size_t /*bytes_sent*/) {
+                              if (ec) {
+                                  std::cerr << "Error sending reliable response: " << ec.message()
+                                            << std::endl;
+                              }
+                          });
 }
 
-string UDPServer::bookFacility(const string &facility, const Util::Day &day, uint16_t startTime,
-                               uint16_t endTime) {
-    auto it = facilities.find(facility);
-    if (it == facilities.end()) {
-        throw std::runtime_error("Facility not found!");
-    }
+std::string UDPServer::queryAvailability(const std::string &facility, const Util::Day &day,
+                                         uint16_t startTime, uint16_t endTime) {
+    Facility &f = getFacilityOrThrow(facility);  // throws if not found
+
+    Facility::TimeSlot slot(day, startTime, endTime);
+
+    f.displayAllSlots(day);
+    f.displayAvailability(day);
+
+    return f.isAvailable(slot) ? "Slot available: " + slot.toString()
+                               : "Slot not available: " + slot.toString();
+}
+
+std::string UDPServer::bookFacility(const std::string &facility, const Util::Day &day,
+                                    uint16_t startTime, uint16_t endTime) {
+    Facility &f = getFacilityOrThrow(facility);  // throws if not found
 
     Facility::TimeSlot slot(day, startTime, endTime);
     uint32_t bookingId;
 
-    if (it->second.bookSlot(slot, bookingId)) {
+    if (f.bookSlot(slot, bookingId)) {
         notifyMonitorClients(facility, startTime, endTime);
         return "Booking confirmed for " + facility + " on " + slot.toString() +
                ". Booking ID: " + std::to_string(bookingId);
@@ -158,33 +172,65 @@ string UDPServer::bookFacility(const string &facility, const Util::Day &day, uin
     }
 }
 
-string UDPServer::cancelBookFacility(const string &facility, uint32_t bookingId) {
-    auto it = facilities.find(facility);
-    if (it == facilities.end()) {
-        throw std::runtime_error("Facility not found!");
+std::string UDPServer::modifyBookFacility(std::string &facility, uint32_t bookingId,
+                                          int offsetMinutes) {
+    Facility &f = getFacilityOrThrow(facility);  // Throws if facility doesn't exist
+
+    std::string errorMessage;
+
+    // Get original booking slot before modification
+    Facility::BookingInfo oldBooking = f.getBookingInfo(bookingId);
+    Facility::TimeSlot oldSlot = oldBooking.slot;
+
+    // Attempt modification
+    if (!f.modifyBooking(bookingId, offsetMinutes, errorMessage)) {
+        throw std::runtime_error("Failed to modify booking: " + errorMessage);
     }
 
-    // Retrieve the booking details before canceling
-    auto booking =
-        it->second.getBookingInfo(bookingId);  // Ensure you have a way to get booking info
+    Facility::BookingInfo newBooking = f.getBookingInfo(bookingId);
+    Facility::TimeSlot newSlot = newBooking.slot;
 
-    if (it->second.cancelBooking(bookingId)) {
-        // Notify monitoring clients about the cancellation
-        notifyMonitorClients(facility, booking.slot.startTime, booking.slot.endTime);
+    // Combine overlapping or adjacent time slots
+    uint16_t combinedStart = oldSlot.startTime;
+    uint16_t combinedEnd = oldSlot.endTime;
 
+    if ((oldSlot.endTime >= newSlot.startTime && oldSlot.startTime <= newSlot.endTime) ||
+        oldSlot.endTime == newSlot.startTime || newSlot.endTime == oldSlot.startTime) {
+        combinedStart = std::min(oldSlot.startTime, newSlot.startTime);
+        combinedEnd = std::max(oldSlot.endTime, newSlot.endTime);
+
+        std::cout << "[Server] Combined timeslot: " << combinedStart << " to " << combinedEnd
+                  << "\n";
+
+        // call notifyMonitorClients with this combined range
+        notifyMonitorClients(facility, combinedStart, combinedEnd);
+    } else {
+        // No overlap, notify both separately
+        notifyMonitorClients(facility, oldSlot.startTime, oldSlot.endTime);
+        notifyMonitorClients(facility, newSlot.startTime, newSlot.endTime);
+    }
+
+    return "Booking with ID " + std::to_string(bookingId) + " modified successfully to " +
+           newSlot.toString() + ".";
+}
+
+std::string UDPServer::cancelBookFacility(const std::string &facility, uint32_t bookingId) {
+    Facility &f = getFacilityOrThrow(facility);  // Throws if facility doesn't exist
+
+    auto cancelledSlot = f.cancelBooking(bookingId);
+    if (cancelledSlot.has_value()) {
+        notifyMonitorClients(facility, cancelledSlot->startTime, cancelledSlot->endTime);
         return "Booking with ID " + std::to_string(bookingId) + " canceled successfully.";
     } else {
         return "Invalid booking ID.";
     }
 }
 
-string UDPServer::registerMonitorClient(const std::string &facility, const Util::Day &day,
-                                        uint16_t startTime, uint16_t endTime, uint32_t interval,
-                                        const udp::endpoint &clientEndpoint) {
-    auto it = facilities.find(facility);
-    if (it == facilities.end()) {
-        throw std::runtime_error("Facility not found!");
-    }
+std::string UDPServer::registerMonitorClient(const std::string &facility, const Util::Day &day,
+                                             uint16_t startTime, uint16_t endTime,
+                                             uint32_t interval,
+                                             const udp::endpoint &clientEndpoint) {
+    Facility &f = getFacilityOrThrow(facility);  // Throws if facility doesn't exist
 
     // Create MonitorInfo with the desired timeslot
     MonitorInfo monitorInfo = {
@@ -197,6 +243,7 @@ string UDPServer::registerMonitorClient(const std::string &facility, const Util:
 
     // Store monitor info in the map
     monitoringClients[facility][day].emplace(startTime, monitorInfo);
+
     // Timer to auto-expire after the interval ends
     monitorInfo.timer->async_wait(
         [this, facility, &monitorInfo, clientEndpoint](const boost::system::error_code &ec) {
@@ -232,30 +279,47 @@ void UDPServer::notifyMonitorClients(const std::string &facility, uint16_t chang
                                      uint16_t changedEndTime) {
     auto facilityIt = monitoringClients.find(facility);
     if (facilityIt == monitoringClients.end()) return;
+
+    auto facilityPtr = facilities.find(facility);
+    if (facilityPtr == facilities.end()) return;
+
+    const Facility &fac = facilityPtr->second;
+
     ResponseMessage response;
 
     for (auto &[day, monitorMap] : facilityIt->second) {
-        for (auto it = monitorMap.lower_bound(changedStartTime);
-             it != monitorMap.end() && it->first < changedEndTime; it++) {
-            const MonitorInfo &info = it->second;
-            if (info.endTime > changedStartTime) {
-                // Check availability
-                auto facilityIt = facilities.find(facility);
-                Facility::TimeSlot slot(day, changedStartTime, changedEndTime);
-                bool isAvailable = facilityIt->second.isAvailable(slot);
-                std::string availabilityStatus = isAvailable ? "available" : "not available";
+        for (uint16_t t = changedStartTime; t < changedEndTime;
+             t = Util::toHHMM(Util::toMinutes(t) + 30)) {
+            uint16_t subStart = t;
+            uint16_t subEnd = Util::toHHMM(Util::toMinutes(t) + 30);
 
-                // Prepare the notification message
-                response.message = "Update: Availability for " + facility + " from " +
-                                   std::to_string(changedStartTime) + " to " +
-                                   std::to_string(changedEndTime) + " changed to " +
-                                   availabilityStatus + ".";
-                response.status = 0;
+            Facility::TimeSlot slot(day, subStart, subEnd);
+            bool isAvailable = fac.isAvailable(slot);
+            std::string availabilityStatus = isAvailable ? "available" : "not available";
 
-                // Send the response to the monitoring client
-                auto responseData = response.marshal();
-                do_send(std::string(responseData.begin(), responseData.end()), info.clientEndpoint);
+            std::set<std::pair<uint16_t, uint16_t>> notified;
+
+            for (auto &[monitorStart, info] : monitorMap) {
+                if (info.endTime > subStart && monitorStart < subEnd) {
+                    // Build response
+                    response.message = "Update: Availability for " + facility + " from " +
+                                       std::to_string(subStart) + " to " + std::to_string(subEnd) +
+                                       " changed to " + availabilityStatus + ".";
+                    response.status = 0;
+
+                    auto responseData = response.marshal();
+                    do_send_reliable(std::string(responseData.begin(), responseData.end()),
+                                     info.clientEndpoint);
+                }
             }
         }
     }
+}
+
+Facility &UDPServer::getFacilityOrThrow(const std::string &facilityName) {
+    auto it = facilities.find(facilityName);
+    if (it == facilities.end()) {
+        throw std::runtime_error("Facility '" + facilityName + "' not found!");
+    }
+    return it->second;
 }

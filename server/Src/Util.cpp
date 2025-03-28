@@ -52,3 +52,15 @@ float Util::generateFpRandNumber() {
     std::uniform_real_distribution<double> dist(0.0, 1.0);  // between 0 and 1.0
     return dist(gen);
 }
+
+int Util::toMinutes(int hhmm) {
+    int hours = hhmm / 100;
+    int minutes = hhmm % 100;
+    return hours * 60 + minutes;
+}
+
+int Util::toHHMM(int minutes) {
+    int hours = minutes / 60;
+    int mins = minutes % 60;
+    return hours * 100 + mins;
+}

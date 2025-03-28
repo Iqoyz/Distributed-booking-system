@@ -7,6 +7,7 @@
 #include <algorithm>
 #include "Util.h"
 #include <unordered_map>
+#include <optional>
 
 class Facility {
   public:
@@ -27,23 +28,25 @@ class Facility {
                    std::to_string(end.first) + ":" + (end.second < 10 ? "0" : "") +
                    std::to_string(end.second);
         }
+
+        bool operator==(const TimeSlot &other) const {
+            return day == other.day && startTime == other.startTime && endTime == other.endTime;
+        }
     };
 
     struct BookingInfo {
         TimeSlot slot;
-        uint32_t bookingId;
-
-        BookingInfo(const TimeSlot &s, uint32_t id) : slot(s), bookingId(id) {}
+        BookingInfo(const TimeSlot &s) : slot(s) {}
     };
     BookingInfo getBookingInfo(uint32_t bookingId) const;
-
     explicit Facility(const std::string &name);
     std::string getName() const;
 
     void addAvailability(const TimeSlot &slot);
     bool isAvailable(const TimeSlot &slot) const;
     bool bookSlot(const TimeSlot &slot, uint32_t &bookingId);
-    bool cancelBooking(uint32_t bookingId);
+    bool modifyBooking(uint32_t bookingId, int offsetMinutes, std::string &errorMessage);
+    std::optional<TimeSlot> cancelBooking(uint32_t bookingId);
     void displayAvailability(Util::Day day) const;
     void displayAllSlots(Util::Day day) const;
 
@@ -54,6 +57,7 @@ class Facility {
 
     uint32_t generateBookingId();  // Private method to generate unique booking IDs
     void sortAvailableSlots();
+    std::vector<TimeSlot> splitIntoThirtyMinSlots(const TimeSlot &slot) const;
 };
 
 #endif

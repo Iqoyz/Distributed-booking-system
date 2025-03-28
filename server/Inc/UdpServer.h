@@ -9,6 +9,8 @@
 #include <unordered_set>
 #include <map>
 #include "Facility.h"
+#include <set>
+#include <tuple>
 
 using namespace boost::asio;
 using boost::asio::ip::udp;
@@ -46,6 +48,7 @@ class UDPServer {
 
     // Facility and client management
     unordered_map<string, Facility> facilities;
+    Facility &getFacilityOrThrow(const string &facilityName);
 
     // Store processed request keys
     unordered_set<string> processedRequests;
@@ -58,8 +61,13 @@ class UDPServer {
 
     void do_receive();  // Async receive function
     void handle_receive(const boost::system::error_code &error,
-                        size_t bytes_transferred);                       // Handle incoming request
-    void do_send(const string &message, const udp::endpoint &endpoint);  // Send response
+                        size_t bytes_transferred);  // Handle incoming request
+    void do_send(const string &message,
+                 const udp::endpoint &endpoint);  // Send response (with probability to fail)
+    void do_send_reliable(
+        const std::string &message,
+        const udp::endpoint &endpoint);  // Send response (100% success rate), only used for
+                                         // callback function (notifyClient)
 
     // Facility operations
     string queryAvailability(const string &facility, const Util::Day &day, uint16_t startTime,
@@ -68,13 +76,15 @@ class UDPServer {
     string bookFacility(const string &facility, const Util::Day &day, uint16_t startTime,
                         uint16_t endTime);
 
+    string modifyBookFacility(string &facility, uint32_t bookingId, int offsetMinutes);
+
     string cancelBookFacility(const string &facility, uint32_t bookingId);
 
     string registerMonitorClient(const std::string &facility, const Util::Day &day,
                                  uint16_t startTime, uint16_t endTime, uint32_t interval,
                                  const udp::endpoint &clientEndpoint);
 
-    void removeMonitorClient(const std::string &facility, const udp::endpoint &clientEndpoint);
+    void removeMonitorClient(const string &facility, const udp::endpoint &clientEndpoint);
 
     void notifyMonitorClients(
         const std::string &facility, uint16_t changedStartTime,

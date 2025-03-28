@@ -26,6 +26,11 @@ Query:
 [RequestID][OpCode=1][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200]
 Book:
 [RequestID][OpCode=2][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200]
+Modify:
+[RequestID][OpCode=2][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200][extraMessage=100
+and 30 (Booking ID=1000)(OffsetMinutes=30)] Cancel:
+[RequestID][OpCode=2][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200][extraMessage=1000
+(Booking ID=1000)]
 Monitor:
 [RequestID][OpCode=4][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1400][extraMessage=300(300s
 monitor interval)]
@@ -33,13 +38,16 @@ monitor interval)]
 
 struct RequestMessage {
     uint32_t requestId;
-    boost::asio::ip::udp::endpoint clientEndpoint;  // for client uniqueness
+    boost::asio::ip::udp::endpoint clientEndpoint;
     Operation operation;
     std::string facilityName;
     Util::Day day;
     uint16_t startTime;
     uint16_t endTime;
-    std::optional<uint32_t> extraMessage;  // Optional Booking ID
+
+    std::optional<uint32_t> bookingId;        // Cancel & Modify
+    std::optional<int> offsetMinutes;         // Modify only
+    std::optional<uint32_t> monitorInterval;  // Monitor only
 
     // Generate a unique key combining request ID and client address
     std::string getUniqueRequestKey() const {
@@ -51,39 +59,63 @@ struct RequestMessage {
     std::vector<uint8_t> marshal() const {
         std::vector<uint8_t> buffer;
 
-        // Request ID (32 bits)
+        // Request ID
         uint32_t netRequestId = htonl(requestId);
         buffer.insert(buffer.end(), reinterpret_cast<const uint8_t*>(&netRequestId),
                       reinterpret_cast<const uint8_t*>(&netRequestId) + sizeof(netRequestId));
 
-        // Operation (1 byte)
+        // Operation
         buffer.push_back(static_cast<uint8_t>(operation));
 
-        // Facility Name Length (16 bits) and Facility Name
+        // Facility Name
         uint16_t nameLength = htons(static_cast<uint16_t>(facilityName.size()));
         buffer.insert(buffer.end(), reinterpret_cast<const uint8_t*>(&nameLength),
                       reinterpret_cast<const uint8_t*>(&nameLength) + sizeof(nameLength));
         buffer.insert(buffer.end(), facilityName.begin(), facilityName.end());
 
-        // Day (1 byte)
+        // Day
         buffer.push_back(static_cast<uint8_t>(day));
 
-        // Start Time (16 bits)
-        uint16_t netStartTime = htons(startTime);
-        buffer.insert(buffer.end(), reinterpret_cast<const uint8_t*>(&netStartTime),
-                      reinterpret_cast<const uint8_t*>(&netStartTime) + sizeof(netStartTime));
+        // Start and End Times
+        uint16_t netStart = htons(startTime);
+        uint16_t netEnd = htons(endTime);
+        buffer.insert(buffer.end(), reinterpret_cast<const uint8_t*>(&netStart),
+                      reinterpret_cast<const uint8_t*>(&netStart) + sizeof(netStart));
+        buffer.insert(buffer.end(), reinterpret_cast<const uint8_t*>(&netEnd),
+                      reinterpret_cast<const uint8_t*>(&netEnd) + sizeof(netEnd));
 
-        // End Time (16 bits)
-        uint16_t netEndTime = htons(endTime);
-        buffer.insert(buffer.end(), reinterpret_cast<const uint8_t*>(&netEndTime),
-                      reinterpret_cast<const uint8_t*>(&netEndTime) + sizeof(netEndTime));
+        // Operation-specific extra fields
+        switch (operation) {
+            case Operation::CANCEL:
+                if (bookingId.has_value()) {
+                    uint32_t netId = htonl(bookingId.value());
+                    buffer.insert(buffer.end(), reinterpret_cast<const uint8_t*>(&netId),
+                                  reinterpret_cast<const uint8_t*>(&netId) + sizeof(netId));
+                }
+                break;
 
-        // Optional extra message (if present)
-        if (extraMessage.has_value()) {
-            uint32_t netExtraMessage = htonl(extraMessage.value());
-            buffer.insert(
-                buffer.end(), reinterpret_cast<const uint8_t*>(&netExtraMessage),
-                reinterpret_cast<const uint8_t*>(&netExtraMessage) + sizeof(netExtraMessage));
+            case Operation::CHANGE:
+                if (bookingId.has_value() && offsetMinutes.has_value()) {
+                    uint32_t netId = htonl(bookingId.value());
+                    int32_t netOffset = htonl(offsetMinutes.value());
+                    buffer.insert(buffer.end(), reinterpret_cast<const uint8_t*>(&netId),
+                                  reinterpret_cast<const uint8_t*>(&netId) + sizeof(netId));
+                    buffer.insert(buffer.end(), reinterpret_cast<const uint8_t*>(&netOffset),
+                                  reinterpret_cast<const uint8_t*>(&netOffset) + sizeof(netOffset));
+                }
+                break;
+
+            case Operation::MONITOR:
+                if (monitorInterval.has_value()) {
+                    uint32_t netInterval = htonl(monitorInterval.value());
+                    buffer.insert(
+                        buffer.end(), reinterpret_cast<const uint8_t*>(&netInterval),
+                        reinterpret_cast<const uint8_t*>(&netInterval) + sizeof(netInterval));
+                }
+                break;
+
+            default:
+                break;
         }
 
         return buffer;
@@ -107,7 +139,7 @@ struct RequestMessage {
         // Operation
         msg.operation = static_cast<Operation>(buffer[offset++]);
 
-        // Facility Name Length and Name
+        // Facility Name
         uint16_t nameLength;
         std::memcpy(&nameLength, buffer.data() + offset, sizeof(nameLength));
         nameLength = ntohs(nameLength);
@@ -123,23 +155,51 @@ struct RequestMessage {
         // Day
         msg.day = static_cast<Util::Day>(buffer[offset++]);
 
-        // Start Time
+        // Start & End Times
         std::memcpy(&msg.startTime, buffer.data() + offset, sizeof(msg.startTime));
         msg.startTime = ntohs(msg.startTime);
         offset += sizeof(msg.startTime);
 
-        // End Time
         std::memcpy(&msg.endTime, buffer.data() + offset, sizeof(msg.endTime));
         msg.endTime = ntohs(msg.endTime);
         offset += sizeof(msg.endTime);
 
-        // Optional extra message (if available)
-        if (offset + sizeof(uint32_t) <= buffer.size()) {
-            uint32_t netExtraMessage;
-            std::memcpy(&netExtraMessage, buffer.data() + offset, sizeof(netExtraMessage));
-            msg.extraMessage = ntohl(netExtraMessage);
-        } else {
-            msg.extraMessage.reset();  // No extra messaage provided
+        // Extract operation-specific extras
+        switch (msg.operation) {
+            case Operation::CANCEL:
+                if (offset + sizeof(uint32_t) <= buffer.size()) {
+                    uint32_t netBookingId;
+                    std::memcpy(&netBookingId, buffer.data() + offset, sizeof(netBookingId));
+                    msg.bookingId = ntohl(netBookingId);
+                    offset += sizeof(netBookingId);
+                }
+                break;
+
+            case Operation::CHANGE:
+                if (offset + sizeof(uint32_t) + sizeof(int32_t) <= buffer.size()) {
+                    uint32_t netBookingId;
+                    int32_t netOffset;
+                    std::memcpy(&netBookingId, buffer.data() + offset, sizeof(netBookingId));
+                    offset += sizeof(netBookingId);
+                    std::memcpy(&netOffset, buffer.data() + offset, sizeof(netOffset));
+                    offset += sizeof(netOffset);
+
+                    msg.bookingId = ntohl(netBookingId);
+                    msg.offsetMinutes = ntohl(netOffset);
+                }
+                break;
+
+            case Operation::MONITOR:
+                if (offset + sizeof(uint32_t) <= buffer.size()) {
+                    uint32_t netInterval;
+                    std::memcpy(&netInterval, buffer.data() + offset, sizeof(netInterval));
+                    msg.monitorInterval = ntohl(netInterval);
+                    offset += sizeof(netInterval);
+                }
+                break;
+
+            default:
+                break;
         }
 
         return msg;

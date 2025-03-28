@@ -20,11 +20,10 @@ void clientAMonitor(io_context &io_context,
                     const udp::endpoint &server_endpoint);
 void clientBMonitor(io_context &io_context,
                     const udp::endpoint &server_endpoint);
+void modifyTest(io_context &io_context, const udp::endpoint &server_endpoint);
 
-int main()
-{
-  try
-  {
+int main() {
+  try {
     io_context io_context;
     unordered_map<string, Facility> facilities;
 
@@ -36,8 +35,7 @@ int main()
     UDPServer server(io_context, 9000, facilities, isAtLeastOnce);
 
     // Run server in a separate thread
-    thread serverThread([&io_context]()
-                        { io_context.run(); });
+    thread serverThread([&io_context]() { io_context.run(); });
     cout << "[TEST] UDP Server is running...\n";
 
     // Mock client setup
@@ -51,6 +49,11 @@ int main()
     queryTest(io_context, server_endpoint);
 
     // -----------------------------
+    // MODIFY TEST
+    // -----------------------------
+    modifyTest(io_context, server_endpoint);
+
+    // -----------------------------
     // MONITORING TEST
     // -----------------------------
     monitorTest(io_context, server_endpoint);
@@ -60,9 +63,7 @@ int main()
     serverThread.join();
 
     cout << "[TEST] All tests completed successfully.\n";
-  }
-  catch (const exception &e)
-  {
+  } catch (const exception &e) {
     cerr << "[ERROR] Exception: " << e.what() << endl;
   }
 
@@ -70,15 +71,16 @@ int main()
 }
 
 // Function to initialize multiple facilities
-void initFacility(unordered_map<string, Facility> &facilities)
-{
+void initFacility(unordered_map<string, Facility> &facilities) {
   facilities.emplace("Gym", Facility("Gym"));
   facilities.at("Gym").addAvailability(
-      Facility::TimeSlot(Util::Day::Monday, 1000, 1100));
+      Facility::TimeSlot(Util::Day::Monday, 1000, 1030));
   facilities.at("Gym").addAvailability(
-      Facility::TimeSlot(Util::Day::Monday, 1100, 1200));
+      Facility::TimeSlot(Util::Day::Monday, 1030, 1100));
   facilities.at("Gym").addAvailability(
-      Facility::TimeSlot(Util::Day::Tuesday, 1300, 1500));
+      Facility::TimeSlot(Util::Day::Monday, 1100, 1130));
+  facilities.at("Gym").addAvailability(
+      Facility::TimeSlot(Util::Day::Tuesday, 1130, 1200));
 
   facilities.emplace("Swimming Pool", Facility("Swimming Pool"));
   facilities.at("Swimming Pool")
@@ -94,7 +96,21 @@ void initFacility(unordered_map<string, Facility> &facilities)
 
   facilities.emplace("Study Room", Facility("Study Room"));
   facilities.at("Study Room")
-      .addAvailability(Facility::TimeSlot(Util::Day::Tuesday, 800, 1000));
+      .addAvailability(Facility::TimeSlot(Util::Day::Tuesday, 800, 830));
+  facilities.at("Study Room")
+      .addAvailability(Facility::TimeSlot(Util::Day::Tuesday, 830, 900));
+  facilities.at("Study Room")
+      .addAvailability(Facility::TimeSlot(Util::Day::Tuesday, 900, 930));
+  facilities.at("Study Room")
+      .addAvailability(Facility::TimeSlot(Util::Day::Tuesday, 930, 1000));
+  facilities.at("Study Room")
+      .addAvailability(Facility::TimeSlot(Util::Day::Tuesday, 1000, 1030));
+  facilities.at("Study Room")
+      .addAvailability(Facility::TimeSlot(Util::Day::Tuesday, 1030, 1100));
+  facilities.at("Study Room")
+      .addAvailability(Facility::TimeSlot(Util::Day::Tuesday, 1100, 1130));
+  facilities.at("Study Room")
+      .addAvailability(Facility::TimeSlot(Util::Day::Tuesday, 1130, 1200));
   facilities.at("Study Room")
       .addAvailability(Facility::TimeSlot(Util::Day::Thursday, 1300, 1500));
 
@@ -108,11 +124,81 @@ void initFacility(unordered_map<string, Facility> &facilities)
 }
 
 // -----------------------------
+// MODIFY TEST
+// -----------------------------
+void modifyTest(io_context &io_context, const udp::endpoint &server_endpoint) {
+  cout << "\n[MODIFY TEST]\n";
+
+  udp::socket socket(io_context, udp::endpoint(udp::v4(), 0));
+  array<uint8_t, 1024> recv_buffer{};
+  udp::endpoint sender_endpoint;
+  vector<uint8_t> responseData;
+
+  // -----------------------------
+  // Step 1: Book a slot (10:00–11:00)
+  // -----------------------------
+  RequestMessage bookRequest;
+  bookRequest.requestId = 2001;
+  bookRequest.operation = Operation::BOOK;
+  bookRequest.facilityName = "Study Room";
+  bookRequest.day = Util::Day::Tuesday;
+  bookRequest.startTime = 800;
+  bookRequest.endTime = 900;
+
+  socket.send_to(buffer(bookRequest.marshal()), server_endpoint);
+
+  size_t len = socket.receive_from(buffer(recv_buffer), sender_endpoint);
+  responseData.assign(recv_buffer.begin(), recv_buffer.begin() + len);
+  ResponseMessage bookResponse = ResponseMessage::unmarshal(responseData);
+  cout << "[MODIFY TEST] Book Response: " << bookResponse.message << endl;
+
+  // Extract booking ID from bookResponse
+  uint32_t bookingId = 0;
+  smatch match;
+  regex bookingIdPattern(R"(Booking ID:\s*(\d+))");
+
+  if (regex_search(bookResponse.message, match, bookingIdPattern) &&
+      match.size() > 1) {
+    bookingId = stoi(match[1]);
+    cout << "[MODIFY TEST] Extracted Booking ID: " << bookingId << endl;
+  } else {
+    cerr << "[MODIFY TEST] Failed to extract booking ID.\n";
+    return;
+  }
+
+  // -----------------------------
+  // Step 2: Modify the booking (offset by +30 mins → 10:30–11:30)
+  // -----------------------------
+  std::this_thread::sleep_for(std::chrono::seconds(2)); // Optional delay
+
+  RequestMessage modifyRequest;
+  modifyRequest.requestId = 2002;
+  modifyRequest.operation = Operation::CHANGE;
+  modifyRequest.facilityName = "Study Room";
+  modifyRequest.day =
+      Util::Day::Tuesday;        // not really needed for modify but safe
+  modifyRequest.startTime = 800; // original time (for reference/log)
+  modifyRequest.endTime = 900;   // original time
+  modifyRequest.bookingId = bookingId;
+  modifyRequest.offsetMinutes = 30; // shift by 30 mins
+
+  socket.send_to(buffer(modifyRequest.marshal()), server_endpoint);
+
+  // Receive MODIFY response
+  recv_buffer.fill(0);
+  len = socket.receive_from(buffer(recv_buffer), sender_endpoint);
+  responseData.assign(recv_buffer.begin(), recv_buffer.begin() + len);
+  ResponseMessage modifyResponse = ResponseMessage::unmarshal(responseData);
+  cout << "[MODIFY TEST] Modify Response: " << modifyResponse.message << endl;
+
+  cout << "[MODIFY TEST] Modify test completed.\n\n";
+}
+
+// -----------------------------
 // MONITORING TEST
 // -----------------------------
-void monitorTest(io_context &io_context, const udp::endpoint &server_endpoint)
-{
-  cout << "[MONITER TEST]\n";
+void monitorTest(io_context &io_context, const udp::endpoint &server_endpoint) {
+  cout << "[MONITER TEST]";
   // Launch separate threads for each client
   thread clientAThread(clientAMonitor, ref(io_context), ref(server_endpoint));
   thread clientBThread(clientBMonitor, ref(io_context), ref(server_endpoint));
@@ -124,8 +210,7 @@ void monitorTest(io_context &io_context, const udp::endpoint &server_endpoint)
 
 // Client A: Monitor Gym from 10:00 to 12:00
 void clientAMonitor(io_context &io_context,
-                    const udp::endpoint &server_endpoint)
-{
+                    const udp::endpoint &server_endpoint) {
   udp::socket socket(io_context, udp::endpoint(udp::v4(), 0));
   vector<uint8_t> responseData;
   ResponseMessage response;
@@ -140,7 +225,7 @@ void clientAMonitor(io_context &io_context,
   monitorRequest.day = Util::Day::Monday;
   monitorRequest.startTime = 1000;
   monitorRequest.endTime = 1200;
-  monitorRequest.extraMessage = 10; // Monitor for 10 seconds
+  monitorRequest.monitorInterval = 15; // Monitor for 10 seconds
 
   socket.send_to(buffer(monitorRequest.marshal()), server_endpoint);
 
@@ -156,7 +241,7 @@ void clientAMonitor(io_context &io_context,
   cout << "[Client A] Waiting for booking/cancellation notifications (timeout: "
           "15s)...\n";
 
-  for (int i = 0; i < 3; ++i) // Simulate 3 notifications or timeout
+  for (int i = 0; i < 10; ++i) // Simulate 3 notifications or timeout
   {
     recv_buffer.fill(0);
 
@@ -167,16 +252,15 @@ void clientAMonitor(io_context &io_context,
     bool notificationReceived = false;
 
     // Start asynchronous wait for the timer
-    timer.async_wait([&](const boost::system::error_code &ec)
-                     {
+    timer.async_wait([&](const boost::system::error_code &ec) {
       if (!ec) {
         cout << "[Client A] Timeout reached without notifications. Ending "
                 "thread.\n";
         socket.cancel(); // Cancel the socket to break the blocking call
-      } });
+      }
+    });
 
-    try
-    {
+    try {
       // Blocking receive with timer running
       len = socket.receive_from(buffer(recv_buffer), sender_endpoint);
       timer.cancel(); // Cancel the timer if message received in time
@@ -185,9 +269,7 @@ void clientAMonitor(io_context &io_context,
       response = ResponseMessage::unmarshal(responseData);
       cout << "[Client A] Notification received: " << response.message << endl;
       notificationReceived = true;
-    }
-    catch (const boost::system::system_error &e)
-    {
+    } catch (const boost::system::system_error &e) {
       cout << "[Client A] Receive operation was canceled due to timeout.\n";
       break; // Exit the loop on timeout
     }
@@ -198,8 +280,7 @@ void clientAMonitor(io_context &io_context,
 
 // Client B: Book Gym from 10:00 to 11:00, Cancel Booking, and Book Again
 void clientBMonitor(io_context &io_context,
-                    const udp::endpoint &server_endpoint)
-{
+                    const udp::endpoint &server_endpoint) {
   std::this_thread::sleep_for(std::chrono::seconds(2)); // Simulate delay
   udp::socket socket(io_context, udp::endpoint(udp::v4(), 0));
 
@@ -235,13 +316,10 @@ void clientBMonitor(io_context &io_context,
   regex bookingIdPattern(R"(Booking ID:\s*(\d+))");
 
   if (regex_search(bookResponse.message, match, bookingIdPattern) &&
-      match.size() > 1)
-  {
+      match.size() > 1) {
     bookingId = stoi(match[1]);
     cout << "[Client B] Extracted Booking ID: " << bookingId << endl;
-  }
-  else
-  {
+  } else {
     cerr << "[Client B] Failed to extract booking ID from response.\n";
     return;
   }
@@ -257,7 +335,7 @@ void clientBMonitor(io_context &io_context,
   cancelRequest.requestId = 1003;
   cancelRequest.operation = Operation::CANCEL;
   cancelRequest.facilityName = "Gym";
-  cancelRequest.extraMessage = bookingId;
+  cancelRequest.bookingId = bookingId;
 
   socket.send_to(buffer(cancelRequest.marshal()), server_endpoint);
 
@@ -297,16 +375,39 @@ void clientBMonitor(io_context &io_context,
   // Extract new Booking ID
   uint32_t newBookingId = 0;
   if (regex_search(bookAgainResponse.message, match, bookingIdPattern) &&
-      match.size() > 1)
-  {
+      match.size() > 1) {
     newBookingId = stoi(match[1]);
     cout << "[Client B] Extracted New Booking ID: " << newBookingId << endl;
-  }
-  else
-  {
+  } else {
     cerr << "[Client B] Failed to extract new booking ID from response.\n";
     return;
   }
+
+  // -----------------------------
+  // Step 4: Modify Gym Booking from (10:00 to 11:00) to (10:30 to 11:30)
+  // -----------------------------
+  std::this_thread::sleep_for(std::chrono::seconds(2)); // Optional delay
+  cout << "\n[Client B] Sending MODIFY request to shift booking +30 "
+          "minutes...\n";
+
+  RequestMessage modifyRequest;
+  modifyRequest.requestId = 1005;
+  modifyRequest.operation = Operation::CHANGE;
+  modifyRequest.facilityName = "Gym";
+  modifyRequest.day = Util::Day::Monday;
+  modifyRequest.startTime = 1000; // Optional (used for logs)
+  modifyRequest.endTime = 1100;
+  modifyRequest.bookingId = newBookingId; // Use the booking ID from Step 3
+  modifyRequest.offsetMinutes = 30;       // Shift by 30 minutes
+
+  socket.send_to(buffer(modifyRequest.marshal()), server_endpoint);
+
+  // Receive MODIFY response
+  recv_buffer.fill(0);
+  len = socket.receive_from(buffer(recv_buffer), sender_endpoint);
+  responseData.assign(recv_buffer.begin(), recv_buffer.begin() + len);
+  ResponseMessage modifyResponse = ResponseMessage::unmarshal(responseData);
+  cout << "[Client B] Modify Response: " << modifyResponse.message << endl;
 
   cout << "[Client B] Workflow completed successfully.\n";
 }
@@ -314,8 +415,7 @@ void clientBMonitor(io_context &io_context,
 // -----------------------------
 // QUERY TEST
 // -----------------------------
-void queryTest(io_context &io_context, const udp::endpoint &server_endpoint)
-{
+void queryTest(io_context &io_context, const udp::endpoint &server_endpoint) {
   udp::socket socket(io_context, udp::endpoint(udp::v4(), 0));
   array<uint8_t, 1024> recv_buffer{};
   udp::endpoint sender_endpoint;
@@ -350,7 +450,8 @@ void queryTest(io_context &io_context, const udp::endpoint &server_endpoint)
   // at most once）
   // -----------------------------
   // Send same QUERY request again
-  cout << "\n[QUERY TEST] Sending QUERY request for Gym (10:00 to 11:00)... (duplicate)\n";
+  cout << "\n[QUERY TEST] Sending QUERY request for Gym (10:00 to 11:00)... "
+          "(duplicate)\n";
   socket.send_to(buffer(queryRequest1.marshal()), server_endpoint);
 
   // Receive response

@@ -18,39 +18,129 @@ void Facility::addAvailability(const TimeSlot& slot) {
     sortAvailableSlots();
 }
 
-bool Facility::isAvailable(const TimeSlot& slot) const {
-    for (const auto& s : availableSlots) {
-        if (s.day == slot.day && s.startTime == slot.startTime && s.endTime == slot.endTime) {
-            return true;
+bool Facility::isAvailable(const TimeSlot& requested) const {
+    uint16_t currentStart = requested.startTime;
+    while (currentStart < requested.endTime) {
+        bool found = false;
+        for (const auto& slot : availableSlots) {
+            if (slot.day == requested.day && slot.startTime == currentStart &&
+                slot.endTime <= requested.endTime) {
+                currentStart = slot.endTime;
+                found = true;
+                break;
+            }
         }
+        if (!found) return false;  // Could not find a matching segment
     }
-    return false;
+    return true;
 }
 
-bool Facility::bookSlot(const TimeSlot& slot, uint32_t& bookingId) {
+bool Facility::bookSlot(const TimeSlot& requested, uint32_t& bookingId) {
+    std::vector<size_t> matchedIndices;
+    uint16_t currentStart = requested.startTime;
+
+    // Find all matching slots that make up the requested time
     for (size_t i = 0; i < availableSlots.size(); ++i) {
-        if (availableSlots[i].day == slot.day && availableSlots[i].startTime == slot.startTime &&
-            availableSlots[i].endTime == slot.endTime) {
-            bookingId = generateBookingId();
+        const auto& slot = availableSlots[i];
+        if (slot.day == requested.day && slot.startTime == currentStart &&
+            slot.endTime <= requested.endTime) {
+            matchedIndices.push_back(i);
+            currentStart = slot.endTime;
 
-            bookings.emplace(bookingId, BookingInfo(slot, bookingId));
-
-            availableSlots.erase(availableSlots.begin() + i);
-            return true;
+            if (currentStart == requested.endTime) break;  // Done
         }
     }
-    return false;
+
+    if (currentStart != requested.endTime) {
+        return false;  // Could not fulfill full requested duration
+    }
+
+    // All required slots found — proceed to book
+    bookingId = generateBookingId();
+    bookings.emplace(bookingId, requested);
+
+    // Remove matched slots from availableSlots (in reverse to avoid shifting)
+    for (auto it = matchedIndices.rbegin(); it != matchedIndices.rend(); ++it) {
+        availableSlots.erase(availableSlots.begin() + *it);
+    }
+
+    return true;
 }
 
-bool Facility::cancelBooking(uint32_t bookingId) {
+bool Facility::modifyBooking(uint32_t bookingId, int offsetMinutes, std::string& errorMessage) {
+    auto it = bookings.find(bookingId);
+    if (it == bookings.end()) {
+        errorMessage = "Invalid Booking ID.";
+        return false;
+    }
+
+    BookingInfo& booking = it->second;
+    TimeSlot oldSlot = booking.slot;
+
+    int newStartMins = Util::toMinutes(oldSlot.startTime) + offsetMinutes;
+    int newEndMins = Util::toMinutes(oldSlot.endTime) + offsetMinutes;
+
+    int newStart = Util::toHHMM(newStartMins);
+    int newEnd = Util::toHHMM(newEndMins);
+
+    if (newStart < 800 || newEnd > 1800 || newStart >= newEnd) {
+        std::cerr << "[Server] Exceed time range.\n";
+        errorMessage = "Invalid time range after applying offset.";
+        return false;
+    }
+
+    TimeSlot newSlot = oldSlot;
+    newSlot.startTime = newStart;
+    newSlot.endTime = newEnd;
+
+    // Add back all sub-slots of the old booking
+    auto originalParts = splitIntoThirtyMinSlots(oldSlot);
+    for (const auto& part : originalParts) {
+        availableSlots.push_back(part);
+    }
+    sortAvailableSlots();
+
+    if (!isAvailable(newSlot)) {
+        // Remove added parts again (rollback)
+        for (const auto& part : originalParts) {
+            availableSlots.erase(std::remove(availableSlots.begin(), availableSlots.end(), part),
+                                 availableSlots.end());
+        }
+        sortAvailableSlots();
+        std::cerr << "[Server] New slot is unavailable.\n";
+        errorMessage = "Requested new time slot is unavailable.";
+        return false;
+    }
+
+    // Remove new parts from availability
+    auto newParts = splitIntoThirtyMinSlots(newSlot);
+    for (const auto& part : newParts) {
+        availableSlots.erase(std::remove(availableSlots.begin(), availableSlots.end(), part),
+                             availableSlots.end());
+    }
+    sortAvailableSlots();
+
+    booking.slot = newSlot;
+
+    return true;
+}
+
+std::optional<Facility::TimeSlot> Facility::cancelBooking(uint32_t bookingId) {
     auto it = bookings.find(bookingId);
     if (it != bookings.end()) {
-        availableSlots.push_back(it->second.slot);
+        TimeSlot fullSlot = it->second.slot;
+
+        // Split and return all sub-slots to availability
+        auto parts = splitIntoThirtyMinSlots(fullSlot);
+        for (const auto& part : parts) {
+            availableSlots.push_back(part);
+        }
+        sortAvailableSlots();
 
         bookings.erase(it);
-        return true;
+        return fullSlot;
     }
-    return false;  // Invalid booking ID
+    return std::nullopt;
 }
 
 void Facility::displayAvailability(Util::Day day) const {
@@ -105,4 +195,18 @@ uint32_t Facility::generateBookingId() {
     static uint32_t currentId =
         1000;  // should include client endpoint, but for simplity, just use hardcoded value here
     return currentId++;
+}
+
+std::vector<Facility::TimeSlot> Facility::splitIntoThirtyMinSlots(
+    const Facility::TimeSlot& slot) const {
+    std::vector<TimeSlot> result;
+    int start = slot.startTime;
+    int end = slot.endTime;
+
+    while (start < end) {
+        int next = Util::toHHMM(Util::toMinutes(start) + 30);
+        result.emplace_back(slot.day, start, next);
+        start = next;
+    }
+    return result;
 }
