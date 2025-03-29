@@ -190,7 +190,7 @@ public class Client {
                     socket.send(sendPacket);
                     System.out.println("Request sent.");
                     
-                    // Receive the response
+                    // Receive the initial response
                     byte[] responseBuffer = new byte[1024];
                     DatagramPacket receivePacket = new DatagramPacket(responseBuffer, responseBuffer.length);
                     socket.receive(receivePacket);
@@ -211,6 +211,41 @@ public class Client {
                     System.out.println("Request ID: " + respRequestId);
                     System.out.println("Status: " + status);
                     System.out.println("Message: " + responseMessage);
+                    
+                    // If the operation is monitor, block further input until the monitor interval expires
+                    if (operation == OP_MONITOR) {
+                        // extraField holds the monitor interval (in seconds)
+                        long monitorDurationMillis = extraField * 1000L;
+                        long endTimeMonitor = System.currentTimeMillis() + monitorDurationMillis;
+                        System.out.println("Monitoring facility " + facilityName + " for " + extraField + " seconds. Waiting for updates...");
+                        
+                        // Set a short socket timeout (e.g., 1000ms) so that receive() doesn't block indefinitely
+                        socket.setSoTimeout(1000);
+                        
+                        while (System.currentTimeMillis() < endTimeMonitor) {
+                            try {
+                                byte[] monitorBuffer = new byte[1024];
+                                DatagramPacket monitorPacket = new DatagramPacket(monitorBuffer, monitorBuffer.length);
+                                socket.receive(monitorPacket);
+                                ByteBuffer monitorRespBuffer = ByteBuffer.wrap(monitorPacket.getData(), 0, monitorPacket.getLength());
+                                monitorRespBuffer.order(ByteOrder.BIG_ENDIAN);
+                                @SuppressWarnings("unused")
+                                int monitorRespRequestId = monitorRespBuffer.getInt();
+                                @SuppressWarnings("unused")
+                                byte monitorStatus = monitorRespBuffer.get();
+                                short monitorMessageLength = monitorRespBuffer.getShort();
+                                byte[] monitorMessageBytes = new byte[monitorMessageLength];
+                                monitorRespBuffer.get(monitorMessageBytes);
+                                String monitorResponseMessage = new String(monitorMessageBytes, "UTF-8");
+                                System.out.println("Monitor Update: " + monitorResponseMessage);
+                            } catch (java.net.SocketTimeoutException e) {
+                                // No update received in this interval; continue waiting
+                            }
+                        }
+                        // Reset socket timeout to infinite
+                        socket.setSoTimeout(0);
+                        System.out.println("Monitoring interval expired. Returning to main menu.");
+                    }
                 }
             }
         } catch (Exception e) {
