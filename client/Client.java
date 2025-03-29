@@ -57,8 +57,19 @@ public class Client {
                     
                     switch (choice) {
                         case 1:
-                            // Query facility availability
+                            // Query facility availability: needs facility and day.
                             operation = OP_QUERY;
+                            System.out.print("Enter facility name: ");
+                            facilityName = scanner.nextLine().trim();
+                            System.out.print("Enter day (0=Monday, 1=Tuesday, ...): ");
+                            day = Byte.parseByte(scanner.nextLine().trim());
+                            // For query, startTime and endTime are not used. Set them to 0.
+                            startTime = 0;
+                            endTime = 0;
+                            break;
+                        case 2:
+                            // Book facility: needs facility, day, startTime, and endTime.
+                            operation = OP_BOOK;
                             System.out.print("Enter facility name: ");
                             facilityName = scanner.nextLine().trim();
                             System.out.print("Enter day (0=Monday, 1=Tuesday, ...): ");
@@ -68,82 +79,65 @@ public class Client {
                             System.out.print("Enter end time (e.g., 1000 for 10:00 AM): ");
                             endTime = Short.parseShort(scanner.nextLine().trim());
                             break;
-                        case 2:
-                            // Book facility
-                            operation = OP_BOOK;
-                            System.out.print("Enter facility name: ");
-                            facilityName = scanner.nextLine().trim();
-                            System.out.print("Enter day (0=Monday, 1=Tuesday, ...): ");
-                            day = Byte.parseByte(scanner.nextLine().trim());
-                            System.out.print("Enter start time: ");
-                            startTime = Short.parseShort(scanner.nextLine().trim());
-                            System.out.print("Enter end time: ");
-                            endTime = Short.parseShort(scanner.nextLine().trim());
-                            break;
                         case 3:
-                            // Change booking
+                            // Modify booking: needs facility, booking ID, and offsetMinutes.
+                            // Other fields are not used.
                             operation = OP_CHANGE;
                             System.out.print("Enter facility name: ");
                             facilityName = scanner.nextLine().trim();
-                            System.out.print("Enter day (0=Monday, 1=Tuesday, ...): ");
-                            day = Byte.parseByte(scanner.nextLine().trim());
-                            System.out.print("Enter current start time: ");
-                            startTime = Short.parseShort(scanner.nextLine().trim());
-                            System.out.print("Enter current end time: ");
-                            endTime = Short.parseShort(scanner.nextLine().trim());
                             System.out.print("Enter booking ID: ");
                             bookingId = Integer.parseInt(scanner.nextLine().trim());
                             System.out.print("Enter offset (in minutes, can be negative): ");
                             extraField = Integer.parseInt(scanner.nextLine().trim());
+                            // Set unused fields to 0.
+                            day = 0;
+                            startTime = 0;
+                            endTime = 0;
                             includeExtra = true;
                             break;
                         case 4:
-                            // Monitor facility availability
+                            // Monitor facility availability: needs facility, day, startTime, endTime, and monitor interval.
                             operation = OP_MONITOR;
                             System.out.print("Enter facility name: ");
                             facilityName = scanner.nextLine().trim();
                             System.out.print("Enter day (0=Monday, 1=Tuesday, ...): ");
                             day = Byte.parseByte(scanner.nextLine().trim());
-                            System.out.print("Enter start time: ");
+                            System.out.print("Enter start time (e.g., 900 for 9:00 AM): ");
                             startTime = Short.parseShort(scanner.nextLine().trim());
-                            System.out.print("Enter end time: ");
+                            System.out.print("Enter end time (e.g., 1000 for 10:00 AM): ");
                             endTime = Short.parseShort(scanner.nextLine().trim());
                             System.out.print("Enter monitor interval (in seconds): ");
                             extraField = Integer.parseInt(scanner.nextLine().trim());
                             includeExtra = true;
                             break;
                         case 5:
-                            // Extend booking (non-idempotent)
+                            // Extend booking: needs facility, booking ID, and extension minutes.
                             operation = OP_EXTEND;
                             System.out.print("Enter facility name: ");
                             facilityName = scanner.nextLine().trim();
-                            System.out.print("Enter day (0=Monday, 1=Tuesday, ...): ");
-                            day = Byte.parseByte(scanner.nextLine().trim());
-                            System.out.print("Enter current start time: ");
-                            startTime = Short.parseShort(scanner.nextLine().trim());
-                            System.out.print("Enter current end time: ");
-                            endTime = Short.parseShort(scanner.nextLine().trim());
                             System.out.print("Enter booking ID: ");
                             bookingId = Integer.parseInt(scanner.nextLine().trim());
-                            System.out.print("Enter extend minutes (e.g., 30 or 60): ");
+                            System.out.print("Enter extension minutes (e.g., 30 or 60): ");
                             extraField = Integer.parseInt(scanner.nextLine().trim());
+                            // Unused fields are set to 0.
+                            day = 0;
+                            startTime = 0;
+                            endTime = 0;
                             includeExtra = true;
                             break;
                         case 6:
-                            // Cancel booking (idempotent)
+                            // Cancel booking: needs facility and booking ID.
                             operation = OP_CANCEL;
                             System.out.print("Enter facility name: ");
                             facilityName = scanner.nextLine().trim();
-                            System.out.print("Enter day (0=Monday, 1=Tuesday, ...): ");
-                            day = Byte.parseByte(scanner.nextLine().trim());
-                            System.out.print("Enter start time: ");
-                            startTime = Short.parseShort(scanner.nextLine().trim());
-                            System.out.print("Enter end time: ");
-                            endTime = Short.parseShort(scanner.nextLine().trim());
                             System.out.print("Enter booking ID: ");
                             bookingId = Integer.parseInt(scanner.nextLine().trim());
-                            // For cancel, the extra field holds the booking ID (4 bytes)
+                            // For cancel, the extra field holds the booking ID.
                             extraField = bookingId;
+                            // Set unused fields to 0.
+                            day = 0;
+                            startTime = 0;
+                            endTime = 0;
                             includeExtra = true;
                             break;
                         default:
