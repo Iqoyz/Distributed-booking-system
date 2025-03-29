@@ -61,11 +61,90 @@ public class Client {
                             operation = OP_QUERY;
                             System.out.print("Enter facility name: ");
                             facilityName = scanner.nextLine().trim();
-                            System.out.print("Enter day (0=Monday, 1=Tuesday, ...): ");
-                            day = Byte.parseByte(scanner.nextLine().trim());
-                            // For query, startTime and endTime are not used. Set them to 0.
-                            startTime = 0;
-                            endTime = 0;
+                            System.out.print("Enter number of days to query for (1-7): ");
+                            int numDays = Integer.parseInt(scanner.nextLine().trim());
+                            if (numDays < 1 || numDays > 7) {
+                                System.out.println("Invalid number of days. Please choose between 1 and 7.");
+                                continue;
+                            }
+                            if (numDays == 1) {
+                                System.out.print("Enter day (0=Monday, 1=Tuesday, ...): ");
+                                day = Byte.parseByte(scanner.nextLine().trim());
+                                // For query, startTime and endTime are not used. Set them to 0.
+                                startTime = 0;
+                                endTime = 0;
+                            } else {
+                                // For multiple days, loop to send a query request for each day.
+                                for (int i = 0; i < numDays; i++) {
+                                    System.out.print("Enter day " + (i + 1) + " (0=Monday, 1=Tuesday, ...): ");
+                                    byte d = Byte.parseByte(scanner.nextLine().trim());
+                                    // For query, startTime and endTime are not used.
+                                    short queryStart = 0;
+                                    short queryEnd = 0;
+                                    
+                                    // Construct the RequestMessage binary payload for the query.
+                                    byte[] facilityNameBytes = facilityName.getBytes("UTF-8");
+                                    int totalLength = 4 + 1 + 2 + facilityNameBytes.length + 1 + 2 + 2; // base fields
+                                    // No extra field for query
+                                    ByteBuffer buffer = ByteBuffer.allocate(totalLength);
+                                    buffer.order(ByteOrder.BIG_ENDIAN);
+                                    buffer.putInt(requestIdCounter++);
+                                    buffer.put(operation);
+                                    buffer.putShort((short) facilityNameBytes.length);
+                                    buffer.put(facilityNameBytes);
+                                    buffer.put(d);
+                                    buffer.putShort(queryStart);
+                                    buffer.putShort(queryEnd);
+                                    byte[] requestData = buffer.array();
+                                    
+                                    // Send the query request via UDP
+                                    DatagramPacket sendPacket = new DatagramPacket(requestData, requestData.length, serverInetAddress, serverPort);
+                                    socket.send(sendPacket);
+                                    System.out.println("Query request for day " + d + " sent.");
+                                    
+                                    // Wait for the response with timeout/resend logic
+                                    long totalStartTime = System.currentTimeMillis();
+                                    boolean responseReceived = false;
+                                    byte[] responseBuffer = new byte[1024];
+                                    DatagramPacket receivePacket = new DatagramPacket(responseBuffer, responseBuffer.length);
+                                    socket.setSoTimeout(10000); // 10-second timeout
+                                    
+                                    while (!responseReceived && (System.currentTimeMillis() - totalStartTime < 30000)) {
+                                        try {
+                                            socket.receive(receivePacket);
+                                            responseReceived = true;
+                                        } catch (java.net.SocketTimeoutException e) {
+                                            if (System.currentTimeMillis() - totalStartTime < 30000) {
+                                                System.out.println("No response received in 10 seconds. Resending query for day " + d + "...");
+                                                socket.send(sendPacket);
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (!responseReceived) {
+                                        System.out.println("Error: No response received from server for day " + d + " after 30 seconds.");
+                                        continue;
+                                    }
+                                    
+                                    // Reset timeout
+                                    socket.setSoTimeout(0);
+                                    
+                                    ByteBuffer respBuffer = ByteBuffer.wrap(receivePacket.getData(), 0, receivePacket.getLength());
+                                    respBuffer.order(ByteOrder.BIG_ENDIAN);
+                                    int respRequestId = respBuffer.getInt();
+                                    byte status = respBuffer.get();
+                                    short messageLength = respBuffer.getShort();
+                                    byte[] messageBytes = new byte[messageLength];
+                                    respBuffer.get(messageBytes);
+                                    String responseMessage = new String(messageBytes, "UTF-8");
+                                    System.out.println("Response for day " + d + " received:");
+                                    System.out.println("Request ID: " + respRequestId);
+                                    System.out.println("Status: " + status);
+                                    System.out.println("Message: " + responseMessage);
+                                }
+                                // After processing all days, return to the main menu.
+                                continue;
+                            }
                             break;
                         case 2:
                             // Book facility: needs facility, day, startTime, and endTime.
