@@ -87,8 +87,7 @@ void UDPServer::handle_receive(const boost::system::error_code &error, size_t by
             switch (request.operation) {
                 case Operation::QUERY:
                     response.status = 0;
-                    response.message = queryAvailability(request.facilityName, request.day,
-                                                         request.startTime, request.endTime);
+                    response.message = queryAvailability(request.facilityName, request.day);
                     break;
 
                 case Operation::BOOK:
@@ -175,17 +174,9 @@ void UDPServer::do_send_reliable(const std::string &message, const udp::endpoint
                           });
 }
 
-std::string UDPServer::queryAvailability(const std::string &facility, const Util::Day &day,
-                                         uint16_t startTime, uint16_t endTime) {
+std::string UDPServer::queryAvailability(const std::string &facility, const Util::Day &day) {
     Facility &f = getFacilityOrThrow(facility);  // throws if not found
-
-    Facility::TimeSlot slot(day, startTime, endTime);
-
-    f.displayAllSlots(day);
-    f.displayAvailability(day);
-
-    return f.isAvailable(slot) ? "Slot available: " + slot.toString()
-                               : "Slot not available: " + slot.toString();
+    return f.getAvailability(day);
 }
 
 std::string UDPServer::bookFacility(const std::string &facility, const Util::Day &day,

@@ -74,8 +74,7 @@ class UDPServer {
                                          // callback function (notifyClient)
 
     // Facility operations
-    string queryAvailability(const string &facility, const Util::Day &day, uint16_t startTime,
-                             uint16_t endTime);
+    string queryAvailability(const std::string &facility, const Util::Day &day);
 
     string bookFacility(const string &facility, const Util::Day &day, uint16_t startTime,
                         uint16_t endTime);

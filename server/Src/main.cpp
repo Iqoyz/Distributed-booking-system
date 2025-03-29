@@ -29,7 +29,7 @@ void initFacilities(unordered_map<string, Facility>& facilities) {
             }
         }
     }
-    cout << "[INFO] Facilities initialized successfully with full weekday slots (08:00–18:00)."
+    cout << "[INFO] Facilities initialized successfully with full weekday slots (08:00 to 18:00)."
          << endl;
 }
 

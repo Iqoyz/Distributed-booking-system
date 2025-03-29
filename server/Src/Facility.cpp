@@ -35,6 +35,25 @@ bool Facility::isAvailable(const TimeSlot& requested) const {
     return true;
 }
 
+std::string Facility::getAvailability(Util::Day day) const {
+    std::ostringstream oss;
+    oss << "All slots for " << name << " on " << Util::dayToString(day) << ":\n";
+
+    for (int mins = 480; mins < 1080; mins += 30) {  // 480 = 800, 1080 = 1800
+        int startTime = Util::toHHMM(mins);
+        int endTime = Util::toHHMM(mins + 30);
+
+        TimeSlot halfHourSlot(day, startTime, endTime);
+        bool available = isAvailable(halfHourSlot);
+
+        oss << "\t" << (startTime < 1000 ? "0" : "") << startTime << " - "
+            << (endTime < 1000 ? "0" : "") << endTime << " -> " << (available ? "yes" : "no")
+            << "\n";
+    }
+
+    return oss.str();
+}
+
 bool Facility::bookSlot(const TimeSlot& requested, uint32_t& bookingId) {
     std::vector<size_t> matchedIndices;
     uint16_t currentStart = requested.startTime;

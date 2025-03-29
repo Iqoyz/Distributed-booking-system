@@ -8,6 +8,7 @@
 #include "Util.h"
 #include <unordered_map>
 #include <optional>
+#include <sstream>
 
 class Facility {
   public:
@@ -44,6 +45,7 @@ class Facility {
 
     void addAvailability(const TimeSlot &slot);
     bool isAvailable(const TimeSlot &slot) const;
+    std::string getAvailability(Util::Day day) const;
     bool bookSlot(const TimeSlot &slot, uint32_t &bookingId);
     bool modifyBooking(uint32_t bookingId, int offsetMinutes, std::string &errorMessage);
     bool extendBooking(uint32_t bookingId, int extensionMinutes, std::string &errorMessage);
