@@ -190,10 +190,32 @@ public class Client {
                     socket.send(sendPacket);
                     System.out.println("Request sent.");
                     
-                    // Receive the initial response
+                    // Wait for the confirmation response using timeout/resend logic for all operations
+                    long totalStartTime = System.currentTimeMillis();
+                    boolean responseReceived = false;
                     byte[] responseBuffer = new byte[1024];
                     DatagramPacket receivePacket = new DatagramPacket(responseBuffer, responseBuffer.length);
-                    socket.receive(receivePacket);
+                    socket.setSoTimeout(10000); // Set timeout to 10 seconds
+                    
+                    while (!responseReceived && (System.currentTimeMillis() - totalStartTime < 30000)) {
+                        try {
+                            socket.receive(receivePacket);
+                            responseReceived = true;
+                        } catch (java.net.SocketTimeoutException e) {
+                            if (System.currentTimeMillis() - totalStartTime < 30000) {
+                                System.out.println("No response received in 10 seconds. Resending request...");
+                                socket.send(sendPacket);
+                            }
+                        }
+                    }
+                    
+                    if (!responseReceived) {
+                        System.out.println("Error: No response received from server after 30 seconds.");
+                        continue; // Return to main menu
+                    }
+                    
+                    // Reset timeout to infinite
+                    socket.setSoTimeout(0);
                     
                     ByteBuffer respBuffer = ByteBuffer.wrap(receivePacket.getData(), 0, receivePacket.getLength());
                     respBuffer.order(ByteOrder.BIG_ENDIAN);
