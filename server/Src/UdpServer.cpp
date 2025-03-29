@@ -304,13 +304,14 @@ std::string UDPServer::registerMonitorClient(const std::string &facility, const 
     // Store monitor info in the map
     monitoringClients[facility][day].emplace(startTime, monitorInfo);
 
+    auto monitorInfoCopy = monitorInfo;
     // Timer to auto-expire after the interval ends
     monitorInfo.timer->async_wait(
-        [this, facility, &monitorInfo, clientEndpoint](const boost::system::error_code &ec) {
+        [this, facility, monitorInfoCopy, clientEndpoint](const boost::system::error_code &ec) {
             if (!ec) {
                 std::cout << "[Server] Monitoring expired for client: " << clientEndpoint
-                          << " on facility: " << facility << " for " << monitorInfo.startTime
-                          << " to " << monitorInfo.endTime << std::endl;
+                          << " on facility: " << facility << " for " << monitorInfoCopy.startTime
+                          << " to " << monitorInfoCopy.endTime << std::endl;
                 removeMonitorClient(facility, clientEndpoint);
             }
         });
