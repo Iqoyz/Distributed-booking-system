@@ -17,6 +17,7 @@ public class Client {
     private static final byte OP_CANCEL  = 6;
     
     private static int requestIdCounter = 1;
+    private static String invocation = "most"; // 'least' or 'most' (for the server to decide which one to use)
 
     public static void main(String[] args) {
         try (Scanner scanner = new Scanner(System.in)) {
@@ -263,32 +264,47 @@ public class Client {
                     socket.send(sendPacket);
                     System.out.println("Request sent.");
                     
-                    // Wait for the confirmation response using timeout/resend logic for all operations
-                    long totalStartTime = System.currentTimeMillis();
-                    boolean responseReceived = false;
-                    byte[] responseBuffer = new byte[1024];
-                    DatagramPacket receivePacket = new DatagramPacket(responseBuffer, responseBuffer.length);
-                    socket.setSoTimeout(10000); // Set timeout to 10 seconds
-                    
-                    while (!responseReceived && (System.currentTimeMillis() - totalStartTime < 30000)) {
-                        try {
-                            socket.receive(receivePacket);
-                            responseReceived = true;
-                        } catch (java.net.SocketTimeoutException e) {
-                            if (System.currentTimeMillis() - totalStartTime < 30000) {
+                    // Wait for the confirmation response using timeout/resend logic, depending on invocation semantic.
+                    DatagramPacket receivePacket;
+                    if (invocation.equals("least")) {
+                        // At least once semantics: keep resending indefinitely until a response is received.
+                        boolean responseReceived = false;
+                        socket.setSoTimeout(10000); // Set timeout to 10 seconds for each attempt.
+                        receivePacket = new DatagramPacket(new byte[1024], 1024);
+                        while (!responseReceived) {
+                            try {
+                                socket.receive(receivePacket);
+                                responseReceived = true;
+                            } catch (java.net.SocketTimeoutException e) {
                                 System.out.println("No response received in 10 seconds. Resending request...");
                                 socket.send(sendPacket);
                             }
                         }
+                        // Reset timeout to infinite after receiving response.
+                        socket.setSoTimeout(0);
+                    } else { // "most" semantics: at most once invocation.
+                        long totalStartTime = System.currentTimeMillis();
+                        boolean responseReceived = false;
+                        receivePacket = new DatagramPacket(new byte[1024], 1024);
+                        socket.setSoTimeout(10000); // Set timeout to 10 seconds.
+                        while (!responseReceived && (System.currentTimeMillis() - totalStartTime < 30000)) {
+                            try {
+                                socket.receive(receivePacket);
+                                responseReceived = true;
+                            } catch (java.net.SocketTimeoutException e) {
+                                if (System.currentTimeMillis() - totalStartTime < 30000) {
+                                    System.out.println("No response received in 10 seconds. Resending request...");
+                                    socket.send(sendPacket);
+                                }
+                            }
+                        }
+                        if (!responseReceived) {
+                            System.out.println("Error: No response received from server after 30 seconds.");
+                            continue; // Return to main menu.
+                        }
+                        // Reset timeout to infinite after receiving response.
+                        socket.setSoTimeout(0);
                     }
-                    
-                    if (!responseReceived) {
-                        System.out.println("Error: No response received from server after 30 seconds.");
-                        continue; // Return to main menu
-                    }
-                    
-                    // Reset timeout to infinite
-                    socket.setSoTimeout(0);
                     
                     ByteBuffer respBuffer = ByteBuffer.wrap(receivePacket.getData(), 0, receivePacket.getLength());
                     respBuffer.order(ByteOrder.BIG_ENDIAN);
