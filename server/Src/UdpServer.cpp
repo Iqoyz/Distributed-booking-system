@@ -66,7 +66,7 @@ void UDPServer::handle_receive(const boost::system::error_code &error, size_t by
     bool isDuplicate = false;
 
     if (!atLeastOnce_ && it != processedRequests.end()) {
-        auto age = std::chrono::duration_cast<std::chrono::seconds>(now - it->second).count();
+        auto age = std::chrono::duration_cast<std::chrono::seconds>(now - it->second.first).count();
         if (age <= expirySeconds) {
             isDuplicate = true;
         }
@@ -74,8 +74,8 @@ void UDPServer::handle_receive(const boost::system::error_code &error, size_t by
 
     // **At-Most-Once Handling**: Ignore duplicate requests
     if (isDuplicate) {
-        response.message = "Ignoring duplicate request: " + requestKey;
-        response.status = 1;
+        response = it->second.second;  // Retrieve the previous response message
+        std::cout << "[Server] Duplicate request received. Replaying cached response.\n";
     } else {
         if (!atLeastOnce_) {
             // Clean up if over capacity
@@ -85,7 +85,7 @@ void UDPServer::handle_receive(const boost::system::error_code &error, size_t by
                 requestOrder.pop();
             }
             // Insert new request, (insert or update timestamp)
-            processedRequests[requestKey] = now;
+            processedRequests[requestKey] = {now, response};
             requestOrder.push(requestKey);
         }
         try {

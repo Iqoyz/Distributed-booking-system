@@ -56,7 +56,9 @@ class UDPServer {
     Facility &getFacilityOrThrow(const string &facilityName);
 
     // Store processed request keys
-    std::unordered_map<std::string, std::chrono::steady_clock::time_point> processedRequests;
+    std::unordered_map<std::string,
+                       std::pair<std::chrono::steady_clock::time_point, ResponseMessage>>
+        processedRequests;
     const size_t MAX_PROCESSED_REQUESTS = 1000;
     std::queue<std::string> requestOrder;  // Tracks insertion order
 
