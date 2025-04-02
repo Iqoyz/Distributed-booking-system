@@ -48,6 +48,9 @@ class UDPServer {
     const float SEND_SUCCESS_RATE =
         0;  // 100% success rate for send message (the smaller , the higher rate)
 
+    const float DROP_REQUEST_PROBABILITY =
+        0;  // 100% success rate for receiving request (the smaller , the higher rate)
+
     // Facility and client management
     unordered_map<string, Facility> facilities;
     Facility &getFacilityOrThrow(const string &facilityName);

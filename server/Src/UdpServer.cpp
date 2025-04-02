@@ -43,6 +43,11 @@ void UDPServer::do_receive() {
 void UDPServer::handle_receive(const boost::system::error_code &error, size_t bytes_transferred) {
     if (error) return;  // Early return on error
 
+    if (Util::generateFpRandNumber() < DROP_REQUEST_PROBABILITY) {
+        std::cout << "[Server] Request loss (simulated)." << std::endl;
+        return;  // simulate dropping the incoming request
+    }
+
     std::vector<uint8_t> requestData(recv_buffer_.begin(),
                                      recv_buffer_.begin() + bytes_transferred);
 
@@ -160,7 +165,7 @@ void UDPServer::do_send(const string &message, const udp::endpoint &endpoint) {
                                   }
                               });
     } else {
-        std::cout << "[Server] send failed. (simulated)" << std::endl;
+        std::cout << "[Server] Reply loss. (simulated)" << std::endl;
     }
 }
 
