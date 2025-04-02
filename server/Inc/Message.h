@@ -37,7 +37,7 @@ Query:
 Book:
 [RequestID][OpCode=2][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200]
 
-Change:
+Change (Modify):
 [RequestID][OpCode=3][FacilityNameLength][FacilityName][Day=0(Monday)][StartTime=1000][EndTime=1200]
 [extraMessage=1000 and 30 (Booking ID=1000)(OffsetMinutes=30)]
 
