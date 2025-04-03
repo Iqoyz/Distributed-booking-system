@@ -5,19 +5,22 @@
 - **/SC4051-distributed-booking-system/**
   - `client/` → Client-side code
   - `server/` → Server-side code
-  - `docs/` → Documentation and reports
+  - `docs/` → report
   - `tests/` → Test cases
   - `scripts/` → Utility scripts
   - `README.md`
   - `.gitignore`
 
-## Build Instructions for Server
+## Build Instructions for Server (C++)
 
 1. **Prerequisites:**
-   - CMake 3.30+
-   - Boost 1.87
-   - (On Windows) MinGW or an equivalent compiler
-   - Clang-Format (optional for code formatting)
+   - **CMake** ≥ 3.30
+   - **Boost 1.87**
+   - **Compiler**:
+     - Windows: MinGW or MSYS2 (`g++` supporting C++20)
+     - macOS/Linux: `clang++` or `g++`
+   - **(Optional)**: `clang-format` (for code formatting)
+
 
 2. **Build the Server:**
    - Open a terminal and navigate to the `scripts/` folder:
@@ -27,8 +30,9 @@
    - Run the build script (for Windows) or use CMake commands on other platforms:
      ```
      # For Windows:
-     build_and_run_windows.bat test   # for running the test harness (server_test)
-     build_and_run_windows.bat test   # for running the server
+     # RUN EITHER COMMAND
+     build_and_run_windows.bat test     # to build and run the test harness (server_test)
+     build_and_run_windows.bat server   # To build and run the main server
      
      # On macOS/Linux:
      mkdir build && cd build
@@ -68,8 +72,16 @@
 
 ## Troubleshooting
 
-- **Boost Configuration:**  
+- **Boost Configuration:**
+  ### MacOS Users: Boost Setup
   Ensure that Boost is correctly installed. On macOS, if you installed Boost via Homebrew, confirm that the include paths (e.g., `/opt/homebrew/include`) are correctly referenced in your IDE's configuration (e.g., in VSCode's `c_cpp_properties.json`) and in your CMakeLists.txt.
+
+  ### 🧱 Windows Users: Boost Setup
+  Download Boost 1.87, extract it to a local folder, and build it. Then, open the `CMakeLists.txt` file located in the `scripts/` folder and replace the placeholder with your actual Boost path:
+```cmake
+if(WIN32)
+    set(BOOST_PATH "C:/Users/YourName/Documents/boost_1_87_0")  # <-- Modify this path
+```
 
 - **CMake and Compiler Settings:**  
   - On Windows, ensure that MinGW (or your chosen compiler) is configured correctly.
