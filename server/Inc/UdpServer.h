@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <map>
 #include "Facility.h"
+#include "Message.h"
 #include <set>
 #include <tuple>
 #include <chrono>
