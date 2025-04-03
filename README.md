@@ -27,25 +27,27 @@
      ```
      cd scripts
      ```
-   - Run the build script (for Windows) or use CMake commands on other platforms:
+     #### Windows (Recommended using `build_and_run_windows.bat`)
+   - Run the build script
      ```
-     # For Windows:
-     # RUN EITHER COMMAND
-     build_and_run_windows.bat test     # to build and run the test harness (server_test)
-     build_and_run_windows.bat server   # To build and run the main server
-     
+     # On Windows:
+     # Build and run the test harness (runs all server test cases)
+      build_and_run_windows.bat test
+
+      # OR: Build and run the main server only
+      build_and_run_windows.bat server
+     ```
+     #### MacOS 
+     ```
      # On macOS/Linux:
      mkdir build && cd build
      cmake ..
      make
-     ```
-   - The server executable `booking_system_server` will be generated. Run it to start the server:
-     ```
-     ./booking_system_server
-     ```
 
-  - The server executable `server_test` will also be generated. Run it to start the server test:
-     ```
+     # Run the main server
+     ./booking_system_server
+
+     # Run test harness
      ./server_test
      ```
 
@@ -76,7 +78,7 @@
   ### MacOS Users: Boost Setup
   Ensure that Boost is correctly installed. On macOS, if you installed Boost via Homebrew, confirm that the include paths (e.g., `/opt/homebrew/include`) are correctly referenced in your IDE's configuration (e.g., in VSCode's `c_cpp_properties.json`) and in your CMakeLists.txt.
 
-  ### 🧱 Windows Users: Boost Setup
+  ### Windows Users: Boost Setup
   Download Boost 1.87, extract it to a local folder, and build it. Then, open the `CMakeLists.txt` file located in the `scripts/` folder and replace the placeholder with your actual Boost path:
 ```cmake
 if(WIN32)
