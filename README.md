@@ -1,4 +1,4 @@
-# Distributed-booking-system test
+# Distributed-booking-system
 
 ## Folder Structure
 
