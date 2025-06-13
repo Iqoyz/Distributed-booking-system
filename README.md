@@ -1,4 +1,4 @@
-# SC4051-distributed-booking-system
+# Distributed-booking-system
 
 ## Folder Structure
 
